@@ -1,0 +1,323 @@
+use std::sync::Arc;
+
+use s3s::dto::*;
+use s3s::{S3Request, S3Response, S3Result, s3_error};
+use s3s_aws::Proxy;
+use tracing::{debug, warn};
+
+use crate::cache::AsyncS3Cache;
+use crate::cache_entry::CachedObject;
+use crate::cache_key::CacheKey;
+use crate::telemetry;
+
+pub struct CachingProxy {
+    inner: Proxy,
+    cache: Arc<AsyncS3Cache>,
+}
+
+impl CachingProxy {
+    pub fn new(inner: Proxy, cache: Arc<AsyncS3Cache>) -> Self {
+        Self { inner, cache }
+    }
+}
+
+/// Convert an s3s Range to a string for use as a cache key component.
+fn range_to_string(range: &Range) -> String {
+    match range {
+        Range::Int {
+            first,
+            last: Some(last),
+        } => format!("bytes={first}-{last}"),
+        Range::Int { first, last: None } => format!("bytes={first}-"),
+        Range::Suffix { length } => format!("bytes=-{length}"),
+    }
+}
+
+#[async_trait::async_trait]
+impl s3s::S3 for CachingProxy {
+    // === Cached operation ===
+
+    async fn get_object(
+        &self,
+        req: S3Request<GetObjectInput>,
+    ) -> S3Result<S3Response<GetObjectOutput>> {
+        let bucket = req.input.bucket.clone();
+        let key = req.input.key.clone();
+        let range = req.input.range;
+        let range_str = range.as_ref().map(range_to_string);
+
+        let cache_key = CacheKey::new(bucket.clone(), key.clone(), range_str.clone());
+
+        // Check cache
+        if let Some(cached) = self.cache.get(&cache_key).await {
+            debug!(bucket = %bucket, key = %key, "cache hit");
+            telemetry::record_cache_hit();
+            self.cache.report_stats().await;
+
+            let body = StreamingBlob::from(s3s::Body::from(cached.body.clone()));
+            let output = GetObjectOutput {
+                body: Some(body),
+                content_length: Some(cached.content_length),
+                content_type: cached.content_type.clone(),
+                e_tag: cached.e_tag.clone(),
+                last_modified: cached.last_modified.clone(),
+                ..Default::default()
+            };
+            return Ok(S3Response::new(output));
+        }
+
+        debug!(bucket = %bucket, key = %key, "cache miss");
+        telemetry::record_cache_miss();
+
+        // Forward to upstream — reconstruct request since we moved range out
+        let get_req = req.map_input(|mut input| {
+            input.range = range;
+            input
+        });
+
+        let resp = self.inner.get_object(get_req).await?;
+        let output = resp.output;
+
+        // Try to buffer and cache the response body
+        let Some(body_blob) = output.body else {
+            return Ok(S3Response::new(output));
+        };
+
+        let max_size = self.cache.max_cacheable_size();
+        let mut body = s3s::Body::from(body_blob);
+
+        match body.store_all_limited(max_size).await {
+            Ok(bytes) => {
+                let content_length = bytes.len() as i64;
+                let cached = CachedObject::new(
+                    bytes.clone(),
+                    output.content_type.clone(),
+                    output.e_tag.clone(),
+                    output.last_modified.clone(),
+                    content_length,
+                );
+
+                let inserted = self.cache.insert(cache_key, cached).await;
+                if inserted {
+                    debug!(bucket = %bucket, key = %key, size = content_length, "cached object");
+                }
+                self.cache.report_stats().await;
+
+                let new_body = StreamingBlob::from(s3s::Body::from(bytes));
+                let new_output = GetObjectOutput {
+                    body: Some(new_body),
+                    content_length: Some(content_length),
+                    content_type: output.content_type,
+                    e_tag: output.e_tag,
+                    last_modified: output.last_modified,
+                    accept_ranges: output.accept_ranges,
+                    cache_control: output.cache_control,
+                    content_disposition: output.content_disposition,
+                    content_encoding: output.content_encoding,
+                    content_language: output.content_language,
+                    content_range: output.content_range,
+                    delete_marker: output.delete_marker,
+                    expiration: output.expiration,
+                    expires: output.expires,
+                    metadata: output.metadata,
+                    version_id: output.version_id,
+                    storage_class: output.storage_class,
+                    ..Default::default()
+                };
+                Ok(S3Response::new(new_output))
+            }
+            Err(_) => {
+                // Body exceeds max cacheable size — the stream is consumed.
+                // Return an error; the client can retry.
+                warn!(
+                    bucket = %bucket,
+                    key = %key,
+                    "object exceeds max cacheable size, could not buffer"
+                );
+                Err(s3_error!(
+                    InternalError,
+                    "Object too large to proxy through cache"
+                ))
+            }
+        }
+    }
+
+    // === Write-through invalidation ===
+
+    async fn put_object(
+        &self,
+        req: S3Request<PutObjectInput>,
+    ) -> S3Result<S3Response<PutObjectOutput>> {
+        let bucket = req.input.bucket.clone();
+        let key = req.input.key.clone();
+
+        let resp = self.inner.put_object(req).await?;
+
+        let count = self.cache.invalidate_object(&bucket, &key).await;
+        if count > 0 {
+            debug!(bucket = %bucket, key = %key, count, "invalidated cache entries on put");
+            telemetry::record_cache_invalidation();
+            self.cache.report_stats().await;
+        }
+
+        Ok(resp)
+    }
+
+    async fn delete_object(
+        &self,
+        req: S3Request<DeleteObjectInput>,
+    ) -> S3Result<S3Response<DeleteObjectOutput>> {
+        let bucket = req.input.bucket.clone();
+        let key = req.input.key.clone();
+
+        let resp = self.inner.delete_object(req).await?;
+
+        let count = self.cache.invalidate_object(&bucket, &key).await;
+        if count > 0 {
+            debug!(bucket = %bucket, key = %key, count, "invalidated cache entries on delete");
+            telemetry::record_cache_invalidation();
+            self.cache.report_stats().await;
+        }
+
+        Ok(resp)
+    }
+
+    async fn delete_objects(
+        &self,
+        req: S3Request<DeleteObjectsInput>,
+    ) -> S3Result<S3Response<DeleteObjectsOutput>> {
+        let bucket = req.input.bucket.clone();
+        let keys: Vec<String> = req
+            .input
+            .delete
+            .objects
+            .iter()
+            .map(|o| o.key.clone())
+            .collect();
+
+        let resp = self.inner.delete_objects(req).await?;
+
+        for key in &keys {
+            let count = self.cache.invalidate_object(&bucket, key).await;
+            if count > 0 {
+                debug!(bucket = %bucket, key = %key, count, "invalidated cache entries on batch delete");
+                telemetry::record_cache_invalidation();
+            }
+        }
+        self.cache.report_stats().await;
+
+        Ok(resp)
+    }
+
+    async fn copy_object(
+        &self,
+        req: S3Request<CopyObjectInput>,
+    ) -> S3Result<S3Response<CopyObjectOutput>> {
+        let dest_bucket = req.input.bucket.clone();
+        let dest_key = req.input.key.clone();
+
+        let resp = self.inner.copy_object(req).await?;
+
+        let count = self.cache.invalidate_object(&dest_bucket, &dest_key).await;
+        if count > 0 {
+            debug!(bucket = %dest_bucket, key = %dest_key, count, "invalidated cache entries on copy");
+            telemetry::record_cache_invalidation();
+            self.cache.report_stats().await;
+        }
+
+        Ok(resp)
+    }
+
+    // === Delegated operations ===
+
+    async fn abort_multipart_upload(
+        &self,
+        req: S3Request<AbortMultipartUploadInput>,
+    ) -> S3Result<S3Response<AbortMultipartUploadOutput>> {
+        self.inner.abort_multipart_upload(req).await
+    }
+    async fn complete_multipart_upload(
+        &self,
+        req: S3Request<CompleteMultipartUploadInput>,
+    ) -> S3Result<S3Response<CompleteMultipartUploadOutput>> {
+        self.inner.complete_multipart_upload(req).await
+    }
+    async fn create_bucket(
+        &self,
+        req: S3Request<CreateBucketInput>,
+    ) -> S3Result<S3Response<CreateBucketOutput>> {
+        self.inner.create_bucket(req).await
+    }
+    async fn create_multipart_upload(
+        &self,
+        req: S3Request<CreateMultipartUploadInput>,
+    ) -> S3Result<S3Response<CreateMultipartUploadOutput>> {
+        self.inner.create_multipart_upload(req).await
+    }
+    async fn delete_bucket(
+        &self,
+        req: S3Request<DeleteBucketInput>,
+    ) -> S3Result<S3Response<DeleteBucketOutput>> {
+        self.inner.delete_bucket(req).await
+    }
+    async fn get_bucket_location(
+        &self,
+        req: S3Request<GetBucketLocationInput>,
+    ) -> S3Result<S3Response<GetBucketLocationOutput>> {
+        self.inner.get_bucket_location(req).await
+    }
+    async fn head_bucket(
+        &self,
+        req: S3Request<HeadBucketInput>,
+    ) -> S3Result<S3Response<HeadBucketOutput>> {
+        self.inner.head_bucket(req).await
+    }
+    async fn head_object(
+        &self,
+        req: S3Request<HeadObjectInput>,
+    ) -> S3Result<S3Response<HeadObjectOutput>> {
+        self.inner.head_object(req).await
+    }
+    async fn list_buckets(
+        &self,
+        req: S3Request<ListBucketsInput>,
+    ) -> S3Result<S3Response<ListBucketsOutput>> {
+        self.inner.list_buckets(req).await
+    }
+    async fn list_multipart_uploads(
+        &self,
+        req: S3Request<ListMultipartUploadsInput>,
+    ) -> S3Result<S3Response<ListMultipartUploadsOutput>> {
+        self.inner.list_multipart_uploads(req).await
+    }
+    async fn list_objects(
+        &self,
+        req: S3Request<ListObjectsInput>,
+    ) -> S3Result<S3Response<ListObjectsOutput>> {
+        self.inner.list_objects(req).await
+    }
+    async fn list_objects_v2(
+        &self,
+        req: S3Request<ListObjectsV2Input>,
+    ) -> S3Result<S3Response<ListObjectsV2Output>> {
+        self.inner.list_objects_v2(req).await
+    }
+    async fn list_parts(
+        &self,
+        req: S3Request<ListPartsInput>,
+    ) -> S3Result<S3Response<ListPartsOutput>> {
+        self.inner.list_parts(req).await
+    }
+    async fn upload_part(
+        &self,
+        req: S3Request<UploadPartInput>,
+    ) -> S3Result<S3Response<UploadPartOutput>> {
+        self.inner.upload_part(req).await
+    }
+    async fn upload_part_copy(
+        &self,
+        req: S3Request<UploadPartCopyInput>,
+    ) -> S3Result<S3Response<UploadPartCopyOutput>> {
+        self.inner.upload_part_copy(req).await
+    }
+}

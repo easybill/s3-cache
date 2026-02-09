@@ -13,16 +13,19 @@ use s3s::service::S3ServiceBuilder;
 use tokio::net::TcpListener;
 use tracing::{debug, error, info};
 
-pub use config::Config;
-pub use error::ApplicationError;
+pub use self::cache::AsyncS3Cache;
+pub use self::config::Config;
+pub use self::error::ApplicationError;
+
+// Public exports for testing
+pub use self::cache::{CacheKey, Cacheable, CachedObject};
+pub use self::proxy_service::{CachingProxy, range_to_string};
 
 mod auth;
 mod cache;
-mod cache_entry;
-mod cache_key;
 mod config;
 mod error;
-mod proxy_service;
+pub mod proxy_service;
 mod telemetry;
 
 pub type Result<T> = std::result::Result<T, ApplicationError>;
@@ -61,7 +64,7 @@ pub async fn start_app(config: Config) -> Result<()> {
     let proxy = s3s_aws::Proxy::from(s3_client);
 
     // Build cache
-    let cache = Arc::new(cache::AsyncS3Cache::new(
+    let cache = Arc::new(AsyncS3Cache::new(
         NonZeroU64::new(config.cache_max_entries).expect("cache_max_entries must be > 0"),
         NonZeroUsize::new(config.cache_max_size_bytes).expect("cache_max_size_bytes must be > 0"),
         Duration::from_secs(config.cache_ttl_seconds),
@@ -69,7 +72,7 @@ pub async fn start_app(config: Config) -> Result<()> {
     ));
 
     // Build caching proxy
-    let caching_proxy = proxy_service::CachingProxy::new(proxy, cache);
+    let caching_proxy = proxy_service::CachingProxy::from_aws_proxy(proxy, cache);
 
     // Build S3 service with auth
     let service = {

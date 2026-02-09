@@ -1,28 +1,37 @@
 use std::sync::Arc;
 
 use s3s::dto::*;
-use s3s::{S3Request, S3Response, S3Result, s3_error};
+use s3s::{S3, S3Request, S3Response, S3Result, s3_error};
 use s3s_aws::Proxy;
 use tracing::{debug, warn};
 
 use crate::cache::AsyncS3Cache;
-use crate::cache_entry::CachedObject;
-use crate::cache_key::CacheKey;
+use crate::cache::CacheKey;
+use crate::cache::CachedObject;
 use crate::telemetry;
 
-pub struct CachingProxy {
-    inner: Proxy,
+/// Generic caching proxy that wraps any S3 implementation
+#[derive(Clone)]
+pub struct CachingProxy<T = Proxy> {
+    inner: T,
     cache: Arc<AsyncS3Cache>,
 }
 
-impl CachingProxy {
-    pub fn new(inner: Proxy, cache: Arc<AsyncS3Cache>) -> Self {
+impl<T> CachingProxy<T> {
+    pub fn new(inner: T, cache: Arc<AsyncS3Cache>) -> Self {
         Self { inner, cache }
     }
 }
 
+impl CachingProxy<Proxy> {
+    /// Convenience constructor for the common case of wrapping s3s_aws::Proxy
+    pub fn from_aws_proxy(inner: Proxy, cache: Arc<AsyncS3Cache>) -> Self {
+        Self::new(inner, cache)
+    }
+}
+
 /// Convert an s3s Range to a string for use as a cache key component.
-fn range_to_string(range: &Range) -> String {
+pub fn range_to_string(range: &Range) -> String {
     match range {
         Range::Int {
             first,
@@ -34,7 +43,7 @@ fn range_to_string(range: &Range) -> String {
 }
 
 #[async_trait::async_trait]
-impl s3s::S3 for CachingProxy {
+impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
     // === Cached operation ===
 
     async fn get_object(

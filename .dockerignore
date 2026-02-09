@@ -1,0 +1,16 @@
+.git/
+target/
+docker/
+
+.gitignore
+.dockerignore
+.env
+
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+.DS_Store
+Thumbs.db

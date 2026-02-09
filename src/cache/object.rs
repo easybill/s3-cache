@@ -1,4 +1,10 @@
-use std::time::{Duration, Instant};
+use std::time::Duration;
+
+#[cfg(not(feature = "mock-clock"))]
+use std::time::Instant;
+
+#[cfg(feature = "mock-clock")]
+use mock_instant::global::Instant;
 
 use bytes::Bytes;
 use s3s::dto::{ContentType, ETag, LastModified};

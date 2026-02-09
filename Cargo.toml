@@ -3,4 +3,31 @@ name = "minio-cache"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name = "minio_cache"
+path = "src/bin/minio_cache.rs"
+
 [dependencies]
+async-trait = "0.1"
+aws-config = { version = "1", features = ["behavior-version-latest"] }
+aws-credential-types = { version = "1", features = ["hardcoded-credentials"] }
+aws-sdk-s3 = "1"
+bytes = "1"
+hashbrown = "0.15"
+hyper = { version = "1", features = ["http1", "http2", "server"] }
+hyper-util = { version = "0.1", features = ["server-auto", "server-graceful", "http1", "http2", "tokio"] }
+opentelemetry = { version = "0.31", default-features = false, features = ["logs", "metrics"] }
+opentelemetry-appender-tracing = "0.31"
+opentelemetry-otlp = { version = "0.31", features = ["grpc-tonic", "gzip-tonic", "logs", "metrics"] }
+opentelemetry_sdk = { version = "0.31", default-features = false, features = ["logs", "metrics"] }
+opentelemetry-stdout = { version = "0.31", default-features = false, features = ["logs", "metrics"] }
+s3s = "0.13.0-alpha.3"
+s3s-aws = "0.13.0-alpha.3"
+tokio = { version = "1", features = ["rt-multi-thread", "net", "signal", "macros", "time"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["registry", "std", "fmt", "env-filter"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 32

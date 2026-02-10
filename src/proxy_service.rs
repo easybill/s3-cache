@@ -87,11 +87,6 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
         let resp = self.inner.get_object(get_req).await?;
         let output = resp.output;
 
-        // Try to buffer and cache the response body
-        let Some(body_blob) = output.body else {
-            return Ok(S3Response::new(output));
-        };
-
         let max_size = self.cache.max_cacheable_size();
 
         // Check if object is too large to cache based on Content-Length
@@ -108,6 +103,11 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
                 return Ok(S3Response::new(output));
             }
         }
+
+        // Try to buffer and cache the response body
+        let Some(body_blob) = output.body else {
+            return Ok(S3Response::new(output));
+        };
 
         let mut body = s3s::Body::from(body_blob);
 

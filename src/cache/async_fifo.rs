@@ -3,7 +3,7 @@ use std::{
     time::Duration,
 };
 
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 
 use crate::cache::{CacheKey, CachedObject};
 use crate::telemetry;
@@ -12,7 +12,7 @@ use super::{Cacheable as _, S3FiFoCache};
 
 /// Async wrapper around S3FiFoCache for use with tokio.
 pub struct AsyncS3Cache {
-    inner: Mutex<S3FiFoCache<CacheKey, CachedObject>>,
+    inner: RwLock<S3FiFoCache<CacheKey, CachedObject>>,
     ttl: Duration,
     max_cacheable_size: usize,
 }
@@ -25,7 +25,7 @@ impl AsyncS3Cache {
         max_cacheable_size: usize,
     ) -> Self {
         Self {
-            inner: Mutex::new(S3FiFoCache::new(max_count, max_size)),
+            inner: RwLock::new(S3FiFoCache::new(max_count, max_size)),
             ttl,
             max_cacheable_size,
         }
@@ -41,12 +41,12 @@ impl AsyncS3Cache {
 
     /// Attempt to get a cached object. Returns None if not found or expired.
     pub async fn get(&self, key: &CacheKey) -> Option<CachedObject> {
-        let cache = self.inner.lock().await;
+        let cache = self.inner.read().await;
         let entry = cache.get(key)?;
 
         if entry.is_expired(self.ttl) {
             drop(cache);
-            // Expired — remove it.
+            // Expired — remove it (requires write lock).
             self.remove(key).await;
             return None;
         }
@@ -60,7 +60,7 @@ impl AsyncS3Cache {
             return false;
         }
 
-        let mut cache = self.inner.lock().await;
+        let mut cache = self.inner.write().await;
 
         // Remove existing entry first to allow re-insert.
         cache.remove(&key);
@@ -73,13 +73,13 @@ impl AsyncS3Cache {
 
     /// Remove a specific cache entry.
     pub async fn remove(&self, key: &CacheKey) -> bool {
-        let mut cache = self.inner.lock().await;
+        let mut cache = self.inner.write().await;
         cache.remove(key)
     }
 
     /// Remove all entries matching a bucket and object key (all ranges).
     pub async fn invalidate_object(&self, bucket: &str, object_key: &str) -> usize {
-        let mut cache = self.inner.lock().await;
+        let mut cache = self.inner.write().await;
         let count = cache.remove_matching(|k| k.matches_object(bucket, object_key));
         if count > 0 {
             cache.compact();
@@ -89,7 +89,7 @@ impl AsyncS3Cache {
 
     /// Get current cache statistics and report them as metrics.
     pub async fn report_stats(&self) {
-        let cache = self.inner.lock().await;
+        let cache = self.inner.read().await;
         let stats = cache.statistics();
         telemetry::record_cache_stats(stats.count, stats.size as u64);
     }

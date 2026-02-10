@@ -66,15 +66,8 @@ impl<K: Clone + Eq + Hash> GhostList<K> {
 
     pub fn compact(&mut self) {
         if self.should_compact() {
-            let mut new_queue = VecDeque::with_capacity(self.map.len());
-
-            for key in self.queue.iter().rev() {
-                if self.map.contains(key) {
-                    new_queue.push_front(key.clone());
-                }
-            }
-
-            self.queue = new_queue;
+            // Use retain to remove tombstones in-place without allocating
+            self.queue.retain(|key| self.map.contains(key));
         }
     }
 }

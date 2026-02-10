@@ -93,6 +93,22 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
         };
 
         let max_size = self.cache.max_cacheable_size();
+
+        // Check if object is too large to cache based on Content-Length
+        if let Some(content_length) = output.content_length {
+            if content_length > max_size as i64 {
+                debug!(
+                    bucket = %bucket,
+                    key = %key,
+                    size = content_length,
+                    max_size,
+                    "object too large to cache, streaming through"
+                );
+                // Stream through without caching
+                return Ok(S3Response::new(output));
+            }
+        }
+
         let mut body = s3s::Body::from(body_blob);
 
         match body.store_all_limited(max_size).await {
@@ -136,16 +152,16 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
                 Ok(S3Response::new(new_output))
             }
             Err(_) => {
-                // Body exceeds max cacheable size — the stream is consumed.
-                // Return an error; the client can retry.
+                // Body exceeds max cacheable size and stream is consumed.
+                // Stream through without caching (though body is consumed).
                 warn!(
                     bucket = %bucket,
                     key = %key,
-                    "object exceeds max cacheable size, could not buffer"
+                    "object exceeded size limit during buffering, stream consumed"
                 );
                 Err(s3_error!(
                     InternalError,
-                    "Object too large to proxy through cache"
+                    "Object exceeded size limit during buffering"
                 ))
             }
         }

@@ -249,7 +249,19 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
         &self,
         req: S3Request<CompleteMultipartUploadInput>,
     ) -> S3Result<S3Response<CompleteMultipartUploadOutput>> {
-        self.inner.complete_multipart_upload(req).await
+        let bucket = req.input.bucket.clone();
+        let key = req.input.key.clone();
+
+        let resp = self.inner.complete_multipart_upload(req).await?;
+
+        let count = self.cache.invalidate_object(&bucket, &key).await;
+        if count > 0 {
+            debug!(bucket = %bucket, key = %key, count, "invalidated cache entries on multipart upload completion");
+            telemetry::record_cache_invalidation();
+            self.cache.report_stats().await;
+        }
+
+        Ok(resp)
     }
     async fn create_bucket(
         &self,

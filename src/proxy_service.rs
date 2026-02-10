@@ -54,8 +54,9 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
         let key = req.input.key.clone();
         let range = req.input.range;
         let range_str = range.as_ref().map(range_to_string);
+        let version_id = req.input.version_id.clone();
 
-        let cache_key = CacheKey::new(bucket.clone(), key.clone(), range_str.clone());
+        let cache_key = CacheKey::new(bucket.clone(), key.clone(), range_str.clone(), version_id);
 
         // Check cache
         if let Some(cached) = self.cache.get(&cache_key).await {

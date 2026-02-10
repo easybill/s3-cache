@@ -9,9 +9,17 @@ use std::{
 
 use super::{CacheError, CacheStatistics, Cacheable, GhostList, ValueEntry};
 
+/// Location of a key in the S3-FIFO cache queues.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum QueueLocation {
+    Small,
+    Main,
+}
+
 /// S3-FIFO cache: a cache that uses the S3-FIFO eviction strategy.
 pub struct S3FiFoCache<K, V> {
     pub(crate) values: HashMap<K, ValueEntry<V>>,
+    pub(crate) queue_location: HashMap<K, QueueLocation>,
 
     pub(crate) small_fifo: VecDeque<K>,
     pub(crate) main_fifo: VecDeque<K>,
@@ -39,6 +47,7 @@ impl<K: Clone + Eq + Hash, V: Cacheable> S3FiFoCache<K, V> {
 
         Self {
             values: HashMap::new(),
+            queue_location: HashMap::new(),
             main_fifo: VecDeque::new(),
             small_fifo: VecDeque::new(),
             ghost: GhostList::new(max_count as usize - max_small_count as usize),
@@ -108,6 +117,7 @@ impl<K: Clone + Eq + Hash, V: Cacheable> S3FiFoCache<K, V> {
                 self.evict_m();
             }
             self.main_fifo.push_front(key.clone());
+            self.queue_location.insert(key.clone(), QueueLocation::Main);
             self.main_count += 1;
             self.main_size += size;
         } else {
@@ -117,6 +127,7 @@ impl<K: Clone + Eq + Hash, V: Cacheable> S3FiFoCache<K, V> {
                 self.evict_s();
             }
             self.small_fifo.push_front(key.clone());
+            self.queue_location.insert(key.clone(), QueueLocation::Small);
             self.small_count += 1;
             self.small_size += size;
         }
@@ -144,31 +155,20 @@ impl<K: Clone + Eq + Hash, V: Cacheable> S3FiFoCache<K, V> {
     /// Removes a specific key from the cache. Returns true if the key was present.
     pub fn remove(&mut self, key: &K) -> bool {
         if let Some(entry) = self.values.remove(key) {
+            // Use queue_location to efficiently find which queue the key is in.
             // We leave tombstones in the FIFO queues; they'll be skipped during eviction.
-            // Adjust the size counters. We need to check which FIFO the key is in.
-            // Since we can't easily tell, we check small first, then main.
-            // The eviction logic already handles missing keys (tombstones) gracefully.
-            //
-            // We need to track whether this was in small or main. Since we can't
-            // know without scanning, we use a simple approach: try to find and remove
-            // from small_fifo first, then main_fifo. The VecDeque scan is acceptable
-            // because remove() is called infrequently (only on writes).
-            let mut found_in_small = false;
-            if let Some(pos) = self.small_fifo.iter().position(|k| k == key) {
-                self.small_fifo.remove(pos);
-                self.small_count -= 1;
-                self.small_size -= entry.size;
-                found_in_small = true;
-            }
-
-            if !found_in_small {
-                if let Some(pos) = self.main_fifo.iter().position(|k| k == key) {
-                    self.main_fifo.remove(pos);
-                    self.main_count -= 1;
-                    self.main_size -= entry.size;
+            if let Some(location) = self.queue_location.remove(key) {
+                match location {
+                    QueueLocation::Small => {
+                        self.small_count -= 1;
+                        self.small_size -= entry.size;
+                    }
+                    QueueLocation::Main => {
+                        self.main_count -= 1;
+                        self.main_size -= entry.size;
+                    }
                 }
             }
-
             true
         } else {
             false
@@ -205,6 +205,8 @@ impl<K: Clone + Eq + Hash, V: Cacheable> S3FiFoCache<K, V> {
     pub(crate) fn evict_s(&mut self) {
         while let Some(tail_key) = self.small_fifo.pop_back() {
             let Some(tail) = self.values.get(&tail_key) else {
+                // Tombstone, remove from location map and continue
+                self.queue_location.remove(&tail_key);
                 continue;
             };
 
@@ -220,13 +222,15 @@ impl<K: Clone + Eq + Hash, V: Cacheable> S3FiFoCache<K, V> {
                     self.evict_m();
                 }
 
-                self.main_fifo.push_back(tail_key);
+                self.main_fifo.push_back(tail_key.clone());
+                self.queue_location.insert(tail_key, QueueLocation::Main);
                 self.main_count += 1;
                 self.main_size += size;
 
                 return;
             } else {
                 let _ = self.values.remove(&tail_key).unwrap();
+                self.queue_location.remove(&tail_key);
                 self.ghost.insert(tail_key);
                 return;
             }
@@ -236,6 +240,8 @@ impl<K: Clone + Eq + Hash, V: Cacheable> S3FiFoCache<K, V> {
     pub(crate) fn evict_m(&mut self) {
         while let Some(tail_key) = self.main_fifo.pop_back() {
             let Some(tail) = self.values.get(&tail_key) else {
+                // Tombstone, remove from location map and continue
+                self.queue_location.remove(&tail_key);
                 continue;
             };
 
@@ -247,8 +253,10 @@ impl<K: Clone + Eq + Hash, V: Cacheable> S3FiFoCache<K, V> {
                 self.main_size += tail.size;
                 tail.freq.fetch_sub(1, Ordering::AcqRel);
                 self.main_fifo.push_front(tail_key);
+                // Location stays Main, no need to update
             } else {
                 let _ = self.values.remove(&tail_key).unwrap();
+                self.queue_location.remove(&tail_key);
                 return;
             }
         }

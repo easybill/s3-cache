@@ -187,7 +187,7 @@ pub fn create_test_cache(max_entries: u64, max_size: usize, ttl_secs: u64) -> Ar
 
 /// Check if cache contains an entry
 pub async fn assert_cache_contains(cache: &Arc<AsyncS3Cache>, bucket: &str, key: &str) {
-    let cache_key = CacheKey::new(bucket.to_string(), key.to_string(), None);
+    let cache_key = CacheKey::new(bucket.to_string(), key.to_string(), None, None);
     assert!(
         cache.get(&cache_key).await.is_some(),
         "Expected cache to contain {}/{}",
@@ -198,7 +198,7 @@ pub async fn assert_cache_contains(cache: &Arc<AsyncS3Cache>, bucket: &str, key:
 
 /// Check if cache does not contain an entry
 pub async fn assert_cache_missing(cache: &Arc<AsyncS3Cache>, bucket: &str, key: &str) {
-    let cache_key = CacheKey::new(bucket.to_string(), key.to_string(), None);
+    let cache_key = CacheKey::new(bucket.to_string(), key.to_string(), None, None);
     assert!(
         cache.get(&cache_key).await.is_none(),
         "Expected cache to NOT contain {}/{}",

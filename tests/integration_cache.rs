@@ -100,7 +100,7 @@ async fn test_cache_size_eviction() {
     let mut cached_count = 0;
     for i in 0..10 {
         let cache_key =
-            minio_cache::CacheKey::new("test-bucket".to_string(), format!("file{}.txt", i), None);
+            minio_cache::CacheKey::new("test-bucket".to_string(), format!("file{}.txt", i), None, None);
         if cache.get(&cache_key).await.is_some() {
             cached_count += 1;
         }
@@ -146,7 +146,7 @@ async fn test_cache_entry_count_limit() {
     let mut cached_count = 0;
     for i in 0..15 {
         let cache_key =
-            minio_cache::CacheKey::new("test-bucket".to_string(), format!("obj{}.txt", i), None);
+            minio_cache::CacheKey::new("test-bucket".to_string(), format!("obj{}.txt", i), None, None);
         if cache.get(&cache_key).await.is_some() {
             cached_count += 1;
         }
@@ -176,13 +176,19 @@ async fn test_oversized_object_not_cached() {
     let cache = create_test_cache(100, 100_000, 300);
     let proxy = CachingProxy::new(backend.clone(), cache.clone());
 
-    // First request: object too large, returns error
+    // First request: object too large, streams through without caching
     let req = build_get_request("test-bucket", "large.bin", None);
     let result = proxy.get_object(req).await;
-    assert!(result.is_err(), "Expected error for oversized object");
+    assert!(result.is_ok(), "Oversized object should stream through successfully");
+    assert_eq!(backend.get_request_count().await, 1);
 
     // Verify not cached
     assert_cache_missing(&cache, "test-bucket", "large.bin").await;
+
+    // Second request should also hit backend (not cached)
+    let req = build_get_request("test-bucket", "large.bin", None);
+    proxy.get_object(req).await.unwrap();
+    assert_eq!(backend.get_request_count().await, 2);
 }
 
 #[tokio::test]

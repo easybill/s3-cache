@@ -32,7 +32,7 @@ async fn test_range_requests_cached_separately() {
     assert_eq!(backend.get_request_count().await, 2); // Separate request
 
     // Verify both are cached (different cache keys)
-    let full_key = CacheKey::new("test-bucket".to_string(), "file.txt".to_string(), None);
+    let full_key = CacheKey::new("test-bucket".to_string(), "file.txt".to_string(), None, None);
     assert!(cache.get(&full_key).await.is_some());
 
     // Range keys use range_to_string() - they're stored separately
@@ -41,6 +41,7 @@ async fn test_range_requests_cached_separately() {
         "test-bucket".to_string(),
         "file.txt".to_string(),
         Some(range_str),
+        None,
     );
     assert!(cache.get(&range_key).await.is_some());
 }
@@ -80,6 +81,7 @@ async fn test_overlapping_ranges_separate_cache() {
         "test-bucket".to_string(),
         "data.bin".to_string(),
         Some(range1_str),
+        None,
     );
     assert!(cache.get(&key1).await.is_some());
 
@@ -88,6 +90,7 @@ async fn test_overlapping_ranges_separate_cache() {
         "test-bucket".to_string(),
         "data.bin".to_string(),
         Some(range2_str),
+        None,
     );
     assert!(cache.get(&key2).await.is_some());
 }
@@ -114,6 +117,7 @@ async fn test_suffix_range_caching() {
         "test-bucket".to_string(),
         "file.txt".to_string(),
         Some(range_str),
+        None,
     );
     assert!(cache.get(&key).await.is_some());
 
@@ -160,6 +164,7 @@ async fn test_range_invalidation_removes_all() {
         "test-bucket".to_string(),
         "multi-range.txt".to_string(),
         None,
+        None,
     );
     assert!(cache.get(&full_key).await.is_some());
 
@@ -169,6 +174,7 @@ async fn test_range_invalidation_removes_all() {
             "test-bucket".to_string(),
             "multi-range.txt".to_string(),
             Some(range_str),
+            None,
         );
         assert!(cache.get(&key).await.is_some());
     }
@@ -200,7 +206,7 @@ async fn test_full_request_does_not_populate_range_cache() {
     proxy.get_object(req).await.unwrap();
 
     // Verify full object cached
-    let full_key = CacheKey::new("test-bucket".to_string(), "file.txt".to_string(), None);
+    let full_key = CacheKey::new("test-bucket".to_string(), "file.txt".to_string(), None, None);
     assert!(cache.get(&full_key).await.is_some());
 
     // Request range: should NOT hit cache (requires separate fetch)

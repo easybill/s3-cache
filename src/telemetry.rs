@@ -1,6 +1,5 @@
 use std::{sync::LazyLock, time::Duration};
 
-use opentelemetry::KeyValue;
 use opentelemetry::metrics::{Counter, Gauge};
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
 use opentelemetry_otlp::{Compression, WithExportConfig, WithTonicConfig};
@@ -15,12 +14,6 @@ static RESOURCE: LazyLock<opentelemetry_sdk::Resource> = LazyLock::new(|| {
         .build()
 });
 
-static HOSTNAME: LazyLock<String> = LazyLock::new(|| {
-    std::env::vars()
-        .find(|(key, _)| key == "HOSTNAME")
-        .map(|(_, value)| value)
-        .unwrap_or_else(|| String::from("unknown"))
-});
 
 pub(crate) fn initialize_telemetry(
     config: &Config,
@@ -118,21 +111,6 @@ pub(crate) fn shutdown_metrics(metric_provider: opentelemetry_sdk::metrics::SdkM
     }
 }
 
-static SERVICE_ERROR: LazyLock<Counter<u64>> = LazyLock::new(|| {
-    opentelemetry::global::meter(CARGO_CRATE_NAME)
-        .u64_counter("service.error")
-        .with_description("Internal errors the server can throw")
-        .build()
-});
-
-pub(crate) fn add_panic() {
-    let attributes = &[
-        KeyValue::new("error.type", "panic"),
-        KeyValue::new("service", CARGO_CRATE_NAME),
-        KeyValue::new("host.name", HOSTNAME.clone()),
-    ];
-    SERVICE_ERROR.add(1, attributes);
-}
 
 // Cache metrics
 
@@ -147,13 +125,6 @@ static CACHE_MISS: LazyLock<Counter<u64>> = LazyLock::new(|| {
     opentelemetry::global::meter(CARGO_CRATE_NAME)
         .u64_counter("cache.miss")
         .with_description("Number of cache misses")
-        .build()
-});
-
-static CACHE_EVICTION: LazyLock<Counter<u64>> = LazyLock::new(|| {
-    opentelemetry::global::meter(CARGO_CRATE_NAME)
-        .u64_counter("cache.eviction")
-        .with_description("Number of cache evictions")
         .build()
 });
 
@@ -184,10 +155,6 @@ pub(crate) fn record_cache_hit() {
 
 pub(crate) fn record_cache_miss() {
     CACHE_MISS.add(1, &[]);
-}
-
-pub(crate) fn record_cache_eviction() {
-    CACHE_EVICTION.add(1, &[]);
 }
 
 pub(crate) fn record_cache_invalidation() {

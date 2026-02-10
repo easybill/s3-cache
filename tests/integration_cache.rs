@@ -3,7 +3,6 @@ mod common;
 use bytes::Bytes;
 use common::MockS3Backend;
 use common::helpers::*;
-use mock_instant::global::MockClock;
 use minio_cache::proxy_service::CachingProxy;
 use s3s::S3;
 use std::time::Duration;
@@ -40,7 +39,11 @@ async fn test_get_object_cache_miss_then_hit() {
 
 #[tokio::test]
 async fn test_cache_ttl_expiration() {
-    MockClock::set_time(Duration::ZERO);
+    #[cfg(not(feature = "mock-clock"))]
+    panic!("This test requires the 'mock-clock' feature to be enabled. Run with: cargo test --features mock-clock");
+
+    #[cfg(feature = "mock-clock")]
+    mock_instant::global::MockClock::set_time(Duration::ZERO);
 
     let backend = MockS3Backend::new();
     backend
@@ -58,7 +61,8 @@ async fn test_cache_ttl_expiration() {
     assert_cache_contains(&cache, "test-bucket", "expiring.txt").await;
 
     // Advance mock clock past TTL
-    MockClock::advance(Duration::from_secs(61));
+    #[cfg(feature = "mock-clock")]
+    mock_instant::global::MockClock::advance(Duration::from_secs(61));
 
     // Update backend data
     backend

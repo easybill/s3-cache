@@ -22,7 +22,7 @@ pub struct Config {
 
 impl Config {
     pub fn from_env(vars: &HashMap<String, String>) -> Self {
-        Self {
+        let config = Self {
             listen_addr: vars
                 .get("LISTEN_ADDR")
                 .map(|s| s.parse().expect("invalid LISTEN_ADDR"))
@@ -72,6 +72,30 @@ impl Config {
                 .get("WORKER_THREADS")
                 .map(|s| s.parse().expect("invalid WORKER_THREADS"))
                 .unwrap_or(4),
+        };
+
+        config.validate();
+        config
+    }
+
+    fn validate(&self) {
+        if self.cache_max_size_bytes < self.max_cacheable_object_size {
+            panic!(
+                "Invalid configuration: cache_max_size_bytes ({}) must be >= max_cacheable_object_size ({})",
+                self.cache_max_size_bytes, self.max_cacheable_object_size
+            );
+        }
+
+        if self.cache_ttl_seconds == 0 {
+            panic!("Invalid configuration: cache_ttl_seconds must be greater than 0");
+        }
+
+        if self.cache_max_entries == 0 {
+            panic!("Invalid configuration: cache_max_entries must be greater than 0");
+        }
+
+        if self.worker_threads == 0 {
+            panic!("Invalid configuration: worker_threads must be greater than 0");
         }
     }
 }
@@ -93,5 +117,62 @@ impl Display for Config {
             self.otel_grpc_endpoint_url,
             self.worker_threads,
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn minimal_env() -> HashMap<String, String> {
+        let mut env = HashMap::new();
+        env.insert("UPSTREAM_ENDPOINT".to_string(), "http://minio:9000".to_string());
+        env.insert("UPSTREAM_ACCESS_KEY_ID".to_string(), "minioadmin".to_string());
+        env.insert("UPSTREAM_SECRET_ACCESS_KEY".to_string(), "minioadmin".to_string());
+        env.insert("CLIENT_ACCESS_KEY_ID".to_string(), "testclient".to_string());
+        env.insert("CLIENT_SECRET_ACCESS_KEY".to_string(), "testclient".to_string());
+        env
+    }
+
+    #[test]
+    fn test_config_valid() {
+        let env = minimal_env();
+        let config = Config::from_env(&env);
+        assert_eq!(config.cache_max_entries, 10_000);
+        assert_eq!(config.cache_max_size_bytes, 1_073_741_824);
+        assert_eq!(config.max_cacheable_object_size, 10_485_760);
+    }
+
+    #[test]
+    #[should_panic(expected = "cache_max_size_bytes")]
+    fn test_config_max_size_too_small() {
+        let mut env = minimal_env();
+        env.insert("CACHE_MAX_SIZE_BYTES".to_string(), "1000".to_string());
+        env.insert("MAX_CACHEABLE_OBJECT_SIZE".to_string(), "2000".to_string());
+        Config::from_env(&env);
+    }
+
+    #[test]
+    #[should_panic(expected = "cache_ttl_seconds")]
+    fn test_config_zero_ttl() {
+        let mut env = minimal_env();
+        env.insert("CACHE_TTL_SECONDS".to_string(), "0".to_string());
+        Config::from_env(&env);
+    }
+
+    #[test]
+    #[should_panic(expected = "cache_max_entries")]
+    fn test_config_zero_max_entries() {
+        let mut env = minimal_env();
+        env.insert("CACHE_MAX_ENTRIES".to_string(), "0".to_string());
+        Config::from_env(&env);
+    }
+
+    #[test]
+    #[should_panic(expected = "worker_threads")]
+    fn test_config_zero_worker_threads() {
+        let mut env = minimal_env();
+        env.insert("WORKER_THREADS".to_string(), "0".to_string());
+        Config::from_env(&env);
     }
 }

@@ -41,6 +41,10 @@ impl<K: Clone + Eq + Hash> GhostList<K> {
     }
 
     pub fn insert(&mut self, key: K) {
+        if self.max_len == 0 {
+            return;
+        }
+
         if self.map.contains(&key) {
             return;
         }

@@ -17,6 +17,7 @@ pub struct Config {
     pub cache_ttl_seconds: usize,
     pub max_cacheable_object_size: usize,
     pub otel_grpc_endpoint_url: Option<String>,
+    pub cache_shards: usize,
     pub worker_threads: usize,
 }
 
@@ -68,6 +69,10 @@ impl Config {
                 .map(|s| s.parse().expect("invalid MAX_CACHEABLE_OBJECT_SIZE"))
                 .unwrap_or(10_485_760),
             otel_grpc_endpoint_url: vars.get("OTEL_GRPC_ENDPOINT_URL").cloned(),
+            cache_shards: vars
+                .get("CACHE_SHARDS")
+                .map(|s| s.parse().expect("invalid CACHE_SHARDS"))
+                .unwrap_or(16),
             worker_threads: vars
                 .get("WORKER_THREADS")
                 .map(|s| s.parse().expect("invalid WORKER_THREADS"))
@@ -94,6 +99,10 @@ impl Config {
             panic!("Invalid configuration: cache_max_entries must be greater than 0");
         }
 
+        if self.cache_shards == 0 {
+            panic!("Invalid configuration: cache_shards must be greater than 0");
+        }
+
         if self.worker_threads == 0 {
             panic!("Invalid configuration: worker_threads must be greater than 0");
         }
@@ -106,7 +115,7 @@ impl Display for Config {
             f,
             "Config{{ listen_addr: {}, upstream_endpoint: {}, upstream_region: {}, \
              cache_max_entries: {}, cache_max_size_bytes: {}, cache_ttl_seconds: {}, \
-             max_cacheable_object_size: {}, otel_grpc_endpoint_url: {:?}, worker_threads: {} }}",
+             max_cacheable_object_size: {}, otel_grpc_endpoint_url: {:?}, cache_shards: {}, worker_threads: {} }}",
             self.listen_addr,
             self.upstream_endpoint,
             self.upstream_region,
@@ -115,6 +124,7 @@ impl Display for Config {
             self.cache_ttl_seconds,
             self.max_cacheable_object_size,
             self.otel_grpc_endpoint_url,
+            self.cache_shards,
             self.worker_threads,
         )
     }

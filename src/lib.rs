@@ -63,6 +63,7 @@ pub async fn start_app(config: Config) -> Result<()> {
         config.cache_max_entries,
         config.cache_max_size_bytes,
         Duration::from_secs(config.cache_ttl_seconds as u64),
+        config.cache_shards,
     ));
 
     // Build caching proxy

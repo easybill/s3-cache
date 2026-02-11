@@ -180,6 +180,7 @@ pub fn create_test_cache(max_entries: usize, max_size: usize, ttl_secs: u64) -> 
         max_entries,
         max_size,
         Duration::from_secs(ttl_secs),
+        4,
     ))
 }
 

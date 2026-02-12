@@ -12,13 +12,13 @@ pub struct Config {
     pub upstream_region: String,
     pub client_access_key_id: String,
     pub client_secret_access_key: String,
+    pub cache_shards: usize,
     pub cache_max_entries: usize,
     pub cache_max_size_bytes: usize,
+    pub cache_max_object_size_bytes: usize,
     pub cache_ttl_seconds: usize,
-    pub max_cacheable_object_size: usize,
-    pub otel_grpc_endpoint_url: Option<String>,
-    pub cache_shards: usize,
     pub worker_threads: usize,
+    pub otel_grpc_endpoint_url: Option<String>,
 }
 
 impl Config {
@@ -52,6 +52,10 @@ impl Config {
                 .get("CLIENT_SECRET_ACCESS_KEY")
                 .cloned()
                 .expect("CLIENT_SECRET_ACCESS_KEY is required"),
+            cache_shards: vars
+                .get("CACHE_SHARDS")
+                .map(|s| s.parse().expect("invalid CACHE_SHARDS"))
+                .unwrap_or(16),
             cache_max_entries: vars
                 .get("CACHE_MAX_ENTRIES")
                 .map(|s| s.parse().expect("invalid CACHE_MAX_ENTRIES"))
@@ -60,23 +64,19 @@ impl Config {
                 .get("CACHE_MAX_SIZE_BYTES")
                 .map(|s| s.parse().expect("invalid CACHE_MAX_SIZE_BYTES"))
                 .unwrap_or(1_073_741_824),
+            cache_max_object_size_bytes: vars
+                .get("CACHE_MAX_OBJECT_SIZE_BYTES")
+                .map(|s: &String| s.parse().expect("invalid CACHE_MAX_OBJECT_SIZE_BYTES"))
+                .unwrap_or(10_485_760),
             cache_ttl_seconds: vars
                 .get("CACHE_TTL_SECONDS")
                 .map(|s| s.parse().expect("invalid CACHE_TTL_SECONDS"))
                 .unwrap_or(300),
-            max_cacheable_object_size: vars
-                .get("MAX_CACHEABLE_OBJECT_SIZE")
-                .map(|s| s.parse().expect("invalid MAX_CACHEABLE_OBJECT_SIZE"))
-                .unwrap_or(10_485_760),
-            otel_grpc_endpoint_url: vars.get("OTEL_GRPC_ENDPOINT_URL").cloned(),
-            cache_shards: vars
-                .get("CACHE_SHARDS")
-                .map(|s| s.parse().expect("invalid CACHE_SHARDS"))
-                .unwrap_or(16),
             worker_threads: vars
                 .get("WORKER_THREADS")
                 .map(|s| s.parse().expect("invalid WORKER_THREADS"))
                 .unwrap_or(4),
+            otel_grpc_endpoint_url: vars.get("OTEL_GRPC_ENDPOINT_URL").cloned(),
         };
 
         config.validate();
@@ -84,10 +84,10 @@ impl Config {
     }
 
     fn validate(&self) {
-        if self.cache_max_size_bytes < self.max_cacheable_object_size {
+        if self.cache_max_size_bytes < self.cache_max_object_size_bytes {
             panic!(
                 "Invalid configuration: cache_max_size_bytes ({}) must be >= max_cacheable_object_size ({})",
-                self.cache_max_size_bytes, self.max_cacheable_object_size
+                self.cache_max_size_bytes, self.cache_max_object_size_bytes
             );
         }
 
@@ -122,7 +122,7 @@ impl Display for Config {
             self.cache_max_entries,
             self.cache_max_size_bytes,
             self.cache_ttl_seconds,
-            self.max_cacheable_object_size,
+            self.cache_max_object_size_bytes,
             self.otel_grpc_endpoint_url,
             self.cache_shards,
             self.worker_threads,
@@ -162,7 +162,7 @@ mod tests {
         let config = Config::from_env(&env);
         assert_eq!(config.cache_max_entries, 10_000);
         assert_eq!(config.cache_max_size_bytes, 1_073_741_824);
-        assert_eq!(config.max_cacheable_object_size, 10_485_760);
+        assert_eq!(config.cache_max_object_size_bytes, 10_485_760);
     }
 
     #[test]
@@ -170,7 +170,10 @@ mod tests {
     fn test_config_max_size_too_small() {
         let mut env = minimal_env();
         env.insert("CACHE_MAX_SIZE_BYTES".to_string(), "1000".to_string());
-        env.insert("MAX_CACHEABLE_OBJECT_SIZE".to_string(), "2000".to_string());
+        env.insert(
+            "CACHE_MAX_OBJECT_SIZE_BYTES".to_string(),
+            "2000".to_string(),
+        );
         Config::from_env(&env);
     }
 

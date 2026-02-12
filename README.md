@@ -28,7 +28,7 @@ Client ──► S3 Cache Proxy ──► S3 Cluster
 2. **Cache lookup** → For `GetObject`, check if `(bucket, key, range)` exists in cache
    - **Cache hit** → Return cached response immediately (metrics: `cache.hit`)
    - **Cache miss** → Forward request to upstream S3 (metrics: `cache.miss`)
-3. **Buffer response** → Stream body from S3, buffer up to `MAX_CACHEABLE_OBJECT_SIZE`
+3. **Buffer response** → Stream body from S3, buffer up to `CACHE_MAX_OBJECT_SIZE_BYTES`
 4. **Store in cache** → Insert into S3-FIFO cache with TTL
 5. **Return to client** → Stream the buffered response back
 
@@ -66,21 +66,22 @@ This provides better hit rates than LRU for workloads with a mix of one-hit-wond
 
 All configuration is done via environment variables:
 
-| Variable                     | Default              | Description             |
-| ---------------------------- | -------------------- | ----------------------- |
-| `LISTEN_ADDR`                | `0.0.0.0:8080`       | Proxy listen address    |
-| `UPSTREAM_ENDPOINT`          | *(required)*         | S3 endpoint URL         |
-| `UPSTREAM_ACCESS_KEY_ID`     | *(required)*         | Proxy's S3 credentials  |
-| `UPSTREAM_SECRET_ACCESS_KEY` | *(required)*         | Proxy's S3 credentials  |
-| `UPSTREAM_REGION`            | `us-east-1`          | S3 region               |
-| `CLIENT_ACCESS_KEY_ID`       | *(required)*         | Client auth credentials |
-| `CLIENT_SECRET_ACCESS_KEY`   | *(required)*         | Client auth credentials |
-| `CACHE_MAX_ENTRIES`          | `10000`              | Max cached objects      |
-| `CACHE_MAX_SIZE_BYTES`       | `1073741824` (1 GiB) | Max cache size          |
-| `CACHE_TTL_SECONDS`          | `300`                | TTL for cached entries  |
-| `MAX_CACHEABLE_OBJECT_SIZE`  | `10485760` (10 MiB)  | Skip caching above this |
-| `OTEL_GRPC_ENDPOINT_URL`     | *(optional)*         | OpenTelemetry collector |
-| `WORKER_THREADS`             | `4`                  | Tokio worker threads    |
+| Variable                      | Default              | Description             |
+| ----------------------------- | -------------------- | ----------------------- |
+| `LISTEN_ADDR`                 | `0.0.0.0:8080`       | Proxy listen address    |
+| `UPSTREAM_ENDPOINT`           | *(required)*         | S3 endpoint URL         |
+| `UPSTREAM_ACCESS_KEY_ID`      | *(required)*         | Proxy's S3 credentials  |
+| `UPSTREAM_SECRET_ACCESS_KEY`  | *(required)*         | Proxy's S3 credentials  |
+| `UPSTREAM_REGION`             | `us-east-1`          | S3 region               |
+| `CLIENT_ACCESS_KEY_ID`        | *(required)*         | Client auth credentials |
+| `CLIENT_SECRET_ACCESS_KEY`    | *(required)*         | Client auth credentials |
+| `CACHE_SHARDS`                | `16`                 | Number of cache shards  |
+| `CACHE_MAX_ENTRIES`           | `10000`              | Max cached objects      |
+| `CACHE_MAX_SIZE_BYTES`        | `1073741824` (1 GiB) | Max cache size          |
+| `CACHE_MAX_OBJECT_SIZE_BYTES` | `10485760` (10 MiB)  | Skip caching above this |
+| `CACHE_TTL_SECONDS`           | `300`                | TTL for cached entries  |
+| `WORKER_THREADS`              | `4`                  | Tokio worker threads    |
+| `OTEL_GRPC_ENDPOINT_URL`      | *(optional)*         | OpenTelemetry collector |
 
 ## Building
 
@@ -248,7 +249,7 @@ cargo run --release --bin s3_cache_sim --features sim -- \
 
 ### Project Structure
 
-```
+```plain
 src/
 ├── bin/s3_cache.rs    # Binary entrypoint
 ├── lib.rs                # Application setup and server
@@ -275,21 +276,5 @@ src/
 
 - **Single-node only** — Cache is not distributed across multiple proxy instances
 - **No persistence** — Cache is in-memory and lost on restart
-- **Large objects** — Objects exceeding `MAX_CACHEABLE_OBJECT_SIZE` return an error (stream is already consumed)
+- **Large objects** — Objects exceeding `CACHE_MAX_OBJECT_SIZE_BYTES` return an error (stream is already consumed)
 - **Limited operations** — Only caches `GetObject`; all other operations are proxied without caching
-
-## Future Improvements
-
-- [ ] Streaming passthrough for oversized objects (requires upstream re-request)
-- [ ] Distributed cache coordination (Redis/Valkey)
-- [ ] Persistent cache tier (disk spillover)
-- [ ] Cache warming via background fetch
-- [ ] Admin API for cache inspection and invalidation
-
-## License
-
-[Your License Here]
-
-## Contributing
-
-[Your Contributing Guidelines Here]

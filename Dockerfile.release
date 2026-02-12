@@ -4,6 +4,6 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-ADD binary_minio_cache /usr/local/bin/minio_cache
+ADD binary_s3_cache /usr/local/bin/s3_cache
 
-ENTRYPOINT ["/usr/local/bin/minio_cache"]
+ENTRYPOINT ["/usr/local/bin/s3_cache"]

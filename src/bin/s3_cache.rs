@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use minio_cache::{Config, start_app};
+use s3_cache::{Config, start_app};
 
 fn main() {
     // Safety: `set_var()` is only safe to call in single threaded programs when using

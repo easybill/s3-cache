@@ -1,15 +1,15 @@
 [package]
-name = "minio-cache"
+name = "s3-cache"
 version = "0.1.0"
 edition = "2024"
 
 [[bin]]
-name = "minio_cache"
-path = "src/bin/minio_cache.rs"
+name = "s3_cache"
+path = "src/bin/s3_cache.rs"
 
 [[bin]]
-name = "minio_cache_sim"
-path = "src/bin/minio_cache_sim/main.rs"
+name = "s3_cache_sim"
+path = "src/bin/s3_cache_sim/main.rs"
 required-features = ["sim"]
 
 [profile.release]

@@ -10,13 +10,13 @@ use http::{HeaderMap, Method, Uri};
 use s3s::dto::*;
 use s3s::{S3, S3Request};
 
-use minio_cache::{AsyncS3Cache, CachingProxy};
+use s3_cache::{AsyncS3Cache, CachingProxy};
 
 use simulated_backend::SimulatedBackend;
 use workload::Pattern;
 
 #[derive(Parser, Debug)]
-#[command(name = "minio_cache_sim", about = "S3-FIFO cache simulator")]
+#[command(name = "s3_cache_sim", about = "S3-FIFO cache simulator")]
 struct Args {
     /// Number of objects in simulated store
     #[arg(long, default_value_t = 10000)]

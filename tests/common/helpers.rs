@@ -1,6 +1,6 @@
 use bytes::Bytes;
 use http::{HeaderMap, Method, Uri};
-use minio_cache::{AsyncS3Cache, CacheKey};
+use s3_cache::{AsyncS3Cache, CacheKey};
 use s3s::dto::*;
 use s3s::{Body, S3Request};
 use std::sync::Arc;

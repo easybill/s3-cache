@@ -3,7 +3,7 @@ mod common;
 use bytes::Bytes;
 use common::MockS3Backend;
 use common::helpers::*;
-use minio_cache::proxy_service::CachingProxy;
+use s3_cache::proxy_service::CachingProxy;
 use s3s::S3;
 
 #[tokio::test]

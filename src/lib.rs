@@ -39,7 +39,7 @@ pub async fn start_app(config: Config) -> Result<()> {
         &config.upstream_secret_access_key,
         None,
         None,
-        "minio-cache-static",
+        "s3-cache-static",
     );
 
     let sdk_config = aws_config::from_env()

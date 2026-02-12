@@ -17,7 +17,7 @@ WORKDIR /build
 
 COPY . .
 
-RUN cargo build --release --bin minio_cache --target x86_64-unknown-linux-gnu
+RUN cargo build --release --bin s3_cache --target x86_64-unknown-linux-gnu
 
 FROM debian:bullseye-slim
 
@@ -25,6 +25,6 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /build/target/x86_64-unknown-linux-gnu/release/minio_cache /usr/local/bin/minio_cache
+COPY --from=builder /build/target/x86_64-unknown-linux-gnu/release/s3_cache /usr/local/bin/s3_cache
 
-ENTRYPOINT ["/usr/local/bin/minio_cache"]
+ENTRYPOINT ["/usr/local/bin/s3_cache"]

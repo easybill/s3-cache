@@ -3,8 +3,8 @@ mod common;
 use bytes::Bytes;
 use common::MockS3Backend;
 use common::helpers::*;
-use minio_cache::CacheKey;
-use minio_cache::proxy_service::CachingProxy;
+use s3_cache::CacheKey;
+use s3_cache::proxy_service::CachingProxy;
 use s3s::S3;
 use std::time::Duration;
 use std::usize;
@@ -103,7 +103,7 @@ async fn test_cache_size_eviction() {
     // Count cached entries - S3-FIFO should evict some but keep at most 5
     let mut cached_count = 0;
     for i in 0..10 {
-        let cache_key = minio_cache::CacheKey::new(
+        let cache_key = s3_cache::CacheKey::new(
             "test-bucket".to_string(),
             format!("file{}.txt", i),
             None,
@@ -153,7 +153,7 @@ async fn test_cache_entry_count_limit() {
     // Count how many entries are still in cache
     let mut cached_count = 0;
     for i in 0..15 {
-        let cache_key = minio_cache::CacheKey::new(
+        let cache_key = s3_cache::CacheKey::new(
             "test-bucket".to_string(),
             format!("obj{}.txt", i),
             None,
@@ -446,7 +446,10 @@ async fn test_put_then_get_sees_new_content() {
     // GET: caches "version1"
     let req = build_get_request("test-bucket", "mutable.txt", None);
     let resp = proxy.get_object(req).await.unwrap();
-    assert_eq!(extract_body(resp.output.body).await, Bytes::from("version1"));
+    assert_eq!(
+        extract_body(resp.output.body).await,
+        Bytes::from("version1")
+    );
 
     // PUT: updates to "version2" and invalidates cache
     let req = build_put_request("test-bucket", "mutable.txt", Bytes::from("version2"));
@@ -455,6 +458,9 @@ async fn test_put_then_get_sees_new_content() {
     // GET: should fetch fresh "version2" from backend
     let req = build_get_request("test-bucket", "mutable.txt", None);
     let resp = proxy.get_object(req).await.unwrap();
-    assert_eq!(extract_body(resp.output.body).await, Bytes::from("version2"));
+    assert_eq!(
+        extract_body(resp.output.body).await,
+        Bytes::from("version2")
+    );
     assert_eq!(backend.get_request_count().await, 2);
 }

@@ -1,13 +1,13 @@
-# MinIO Cache
+# S3 Cache
 
-A high-performance, transparent S3 caching proxy that sits between clients and MinIO, using the S3-FIFO eviction algorithm to cache `GetObject` responses in memory.
+A high-performance, transparent S3 caching proxy that sits between clients and S3, using the S3-FIFO eviction algorithm to cache `GetObject` responses in memory.
 
 ## What It Does
 
-MinIO Cache is a caching layer for S3-compatible object storage (MinIO) that:
+S3 Cache is a caching layer for S3-compatible object storage (e.g. MinIO) that:
 
-- **Transparently caches GET requests** — Clients connect to the proxy as if it were MinIO itself
-- **Reduces backend load** — Frequently accessed objects are served from memory without hitting MinIO
+- **Transparently caches GET requests** — Clients connect to the proxy as if it were S3 itself
+- **Reduces backend load** — Frequently accessed objects are served from memory without hitting S3
 - **Intelligently evicts entries** — Uses the S3-FIFO algorithm for optimal cache hit rates
 - **Invalidates on writes** — Automatically invalidates cache entries when objects are modified or deleted
 - **Supports range requests** — Caches partial object requests separately from full objects
@@ -16,7 +16,7 @@ MinIO Cache is a caching layer for S3-compatible object storage (MinIO) that:
 ## How It Works
 
 ```plain
-Client ──► MinIO Cache Proxy ──► MinIO Cluster
+Client ──► S3 Cache Proxy ──► S3 Cluster
               │
          S3-FIFO Cache
           (in-memory)
@@ -27,8 +27,8 @@ Client ──► MinIO Cache Proxy ──► MinIO Cluster
 1. **Client sends S3 request** → The proxy receives it via the `s3s` crate (AWS Sig V4 authentication)
 2. **Cache lookup** → For `GetObject`, check if `(bucket, key, range)` exists in cache
    - **Cache hit** → Return cached response immediately (metrics: `cache.hit`)
-   - **Cache miss** → Forward request to upstream MinIO (metrics: `cache.miss`)
-3. **Buffer response** → Stream body from MinIO, buffer up to `MAX_CACHEABLE_OBJECT_SIZE`
+   - **Cache miss** → Forward request to upstream S3 (metrics: `cache.miss`)
+3. **Buffer response** → Stream body from S3, buffer up to `MAX_CACHEABLE_OBJECT_SIZE`
 4. **Store in cache** → Insert into S3-FIFO cache with TTL
 5. **Return to client** → Stream the buffered response back
 
@@ -66,21 +66,21 @@ This provides better hit rates than LRU for workloads with a mix of one-hit-wond
 
 All configuration is done via environment variables:
 
-| Variable                     | Default              | Description               |
-| ---------------------------- | -------------------- | ------------------------- |
-| `LISTEN_ADDR`                | `0.0.0.0:8080`       | Proxy listen address      |
-| `UPSTREAM_ENDPOINT`          | *(required)*         | MinIO endpoint URL        |
-| `UPSTREAM_ACCESS_KEY_ID`     | *(required)*         | Proxy's MinIO credentials |
-| `UPSTREAM_SECRET_ACCESS_KEY` | *(required)*         | Proxy's MinIO credentials |
-| `UPSTREAM_REGION`            | `us-east-1`          | S3 region                 |
-| `CLIENT_ACCESS_KEY_ID`       | *(required)*         | Client auth credentials   |
-| `CLIENT_SECRET_ACCESS_KEY`   | *(required)*         | Client auth credentials   |
-| `CACHE_MAX_ENTRIES`          | `10000`              | Max cached objects        |
-| `CACHE_MAX_SIZE_BYTES`       | `1073741824` (1 GiB) | Max cache size            |
-| `CACHE_TTL_SECONDS`          | `300`                | TTL for cached entries    |
-| `MAX_CACHEABLE_OBJECT_SIZE`  | `10485760` (10 MiB)  | Skip caching above this   |
-| `OTEL_GRPC_ENDPOINT_URL`     | *(optional)*         | OpenTelemetry collector   |
-| `WORKER_THREADS`             | `4`                  | Tokio worker threads      |
+| Variable                     | Default              | Description             |
+| ---------------------------- | -------------------- | ----------------------- |
+| `LISTEN_ADDR`                | `0.0.0.0:8080`       | Proxy listen address    |
+| `UPSTREAM_ENDPOINT`          | *(required)*         | S3 endpoint URL         |
+| `UPSTREAM_ACCESS_KEY_ID`     | *(required)*         | Proxy's S3 credentials  |
+| `UPSTREAM_SECRET_ACCESS_KEY` | *(required)*         | Proxy's S3 credentials  |
+| `UPSTREAM_REGION`            | `us-east-1`          | S3 region               |
+| `CLIENT_ACCESS_KEY_ID`       | *(required)*         | Client auth credentials |
+| `CLIENT_SECRET_ACCESS_KEY`   | *(required)*         | Client auth credentials |
+| `CACHE_MAX_ENTRIES`          | `10000`              | Max cached objects      |
+| `CACHE_MAX_SIZE_BYTES`       | `1073741824` (1 GiB) | Max cache size          |
+| `CACHE_TTL_SECONDS`          | `300`                | TTL for cached entries  |
+| `MAX_CACHEABLE_OBJECT_SIZE`  | `10485760` (10 MiB)  | Skip caching above this |
+| `OTEL_GRPC_ENDPOINT_URL`     | *(optional)*         | OpenTelemetry collector |
+| `WORKER_THREADS`             | `4`                  | Tokio worker threads    |
 
 ## Building
 
@@ -95,12 +95,12 @@ All configuration is done via environment variables:
 cargo build --release
 ```
 
-The binary will be at `target/release/minio_cache`.
+The binary will be at `target/release/s3_cache`.
 
 ### Build Docker image
 
 ```bash
-docker build -t minio-cache:latest .
+docker build -t s3-cache:latest .
 ```
 
 ## Usage
@@ -109,8 +109,8 @@ docker build -t minio-cache:latest .
 
 ```bash
 export UPSTREAM_ENDPOINT=http://localhost:9000
-export UPSTREAM_ACCESS_KEY_ID=minioadmin
-export UPSTREAM_SECRET_ACCESS_KEY=minioadmin
+export UPSTREAM_ACCESS_KEY_ID=s3admin
+export UPSTREAM_SECRET_ACCESS_KEY=s3admin
 export CLIENT_ACCESS_KEY_ID=client
 export CLIENT_SECRET_ACCESS_KEY=clientsecret
 
@@ -121,12 +121,12 @@ cargo run --release
 
 ```bash
 docker run -p 8080:8080 \
-  -e UPSTREAM_ENDPOINT=http://minio:9000 \
-  -e UPSTREAM_ACCESS_KEY_ID=minioadmin \
-  -e UPSTREAM_SECRET_ACCESS_KEY=minioadmin \
+  -e UPSTREAM_ENDPOINT=http://s3:9000 \
+  -e UPSTREAM_ACCESS_KEY_ID=s3admin \
+  -e UPSTREAM_SECRET_ACCESS_KEY=s3admin \
   -e CLIENT_ACCESS_KEY_ID=client \
   -e CLIENT_SECRET_ACCESS_KEY=clientsecret \
-  minio-cache:latest
+  s3-cache:latest
 ```
 
 ### Client configuration
@@ -167,16 +167,16 @@ cargo test -- --nocapture
 
 ## Cache Simulation
 
-The `minio_cache_sim` binary drives the cache via direct S3 trait calls (no HTTP) with a simulated backend, allowing reproducible benchmarking of hit rates and latency under various workloads. Build it with the `sim` feature:
+The `s3_cache_sim` binary drives the cache via direct S3 trait calls (no HTTP) with a simulated backend, allowing reproducible benchmarking of hit rates and latency under various workloads. Build it with the `sim` feature:
 
 ```bash
-cargo build --release --bin minio_cache_sim --features sim
+cargo build --release --bin s3_cache_sim --features sim
 ```
 
 Run `--help` for all available flags:
 
 ```bash
-cargo run --release --bin minio_cache_sim --features sim -- --help
+cargo run --release --bin s3_cache_sim --features sim -- --help
 ```
 
 ### Scenarios
@@ -184,62 +184,62 @@ cargo run --release --bin minio_cache_sim --features sim -- --help
 **1. No cache (baseline)** — Bypass the cache entirely with `--no-cache` to establish a raw backend latency baseline. Compare against cached runs to measure the actual speedup.
 
 ```bash
-cargo run --release --bin minio_cache_sim --features sim -- \
+cargo run --release --bin s3_cache_sim --features sim -- \
   --no-cache
 ```
 
 **2. Zipf baseline** — Realistic workload with moderate skew (s=1.0). Compare against scenario 1 to see the cache's effect.
 
 ```bash
-cargo run --release --bin minio_cache_sim --features sim
+cargo run --release --bin s3_cache_sim --features sim
 ```
 
 **3. Heavy skew** — High Zipf exponent (s=1.5) concentrates requests on a small hot set, demonstrating near-optimal hit rates.
 
 ```bash
-cargo run --release --bin minio_cache_sim --features sim -- \
+cargo run --release --bin s3_cache_sim --features sim -- \
   --zipf-exponent 1.5
 ```
 
 **4. Scan resistance** — Sequential scan over 10K objects. S3-FIFO should resist pollution, yielding ~0% hit rate (which is correct behavior — an LRU would thrash and waste memory).
 
 ```bash
-cargo run --release --bin minio_cache_sim --features sim -- \
+cargo run --release --bin s3_cache_sim --features sim -- \
   --pattern scan
 ```
 
 **5. One-hit-wonders** — 30% of requests go to unique keys never seen again. Tests the cache's ability to avoid wasting capacity on transient objects.
 
 ```bash
-cargo run --release --bin minio_cache_sim --features sim -- \
+cargo run --release --bin s3_cache_sim --features sim -- \
   --one-hit-wonder-ratio 0.3
 ```
 
 **6. Tiny cache under pressure** — Only 100 cache entries and 1MB budget. Measures how gracefully hit rate degrades when the cache is severely undersized.
 
 ```bash
-cargo run --release --bin minio_cache_sim --features sim -- \
+cargo run --release --bin s3_cache_sim --features sim -- \
   --cache-max-entries 100 --cache-max-size 1000000
 ```
 
 **7. Size-constrained eviction** — Large objects (50KB-200KB) with the default 10MB cache budget. The byte limit kicks in well before the entry limit, forcing size-aware eviction.
 
 ```bash
-cargo run --release --bin minio_cache_sim --features sim -- \
+cargo run --release --bin s3_cache_sim --features sim -- \
   --min-object-size 50000 --max-object-size 200000
 ```
 
 **8. Uniform random** — No access skew. With the cache holding 10% of the object set, hit rate reflects pure capacity ratio. Measures baseline behavior without a hot set.
 
 ```bash
-cargo run --release --bin minio_cache_sim --features sim -- \
+cargo run --release --bin s3_cache_sim --features sim -- \
   --pattern uniform
 ```
 
 **9. High-latency backend** — Simulates a slow upstream (50ms RTT, 10MB/s throughput). Cache hits become dramatically faster than misses, making the latency p50/p99 split clearly visible. Uses fewer requests to keep runtime reasonable.
 
 ```bash
-cargo run --release --bin minio_cache_sim --features sim -- \
+cargo run --release --bin s3_cache_sim --features sim -- \
   --latency-ms 50 --throughput-bytes-per-sec 10000000 \
   --num-requests 10000
 ```
@@ -250,7 +250,7 @@ cargo run --release --bin minio_cache_sim --features sim -- \
 
 ```
 src/
-├── bin/minio_cache.rs    # Binary entrypoint
+├── bin/s3_cache.rs    # Binary entrypoint
 ├── lib.rs                # Application setup and server
 ├── config.rs             # Environment variable parsing
 ├── error.rs              # Error types
@@ -266,7 +266,7 @@ src/
 
 - **s3s 0.13.0-alpha.3** — S3 protocol implementation
 - **s3s-aws 0.12** — AWS SDK integration for upstream forwarding
-- **aws-sdk-s3** — MinIO client
+- **aws-sdk-s3** — S3 client
 - **hyper-util** — HTTP server
 - **tokio** — Async runtime
 - **opentelemetry** — Metrics and logging

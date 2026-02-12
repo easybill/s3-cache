@@ -91,7 +91,7 @@ impl<K: Clone + Eq + Hash, V> S3FifoCache<K, V> {
             return Some(old_value);
         }
 
-        let mut entry = ValueEntry::new(value);
+        let entry = ValueEntry::new(value);
 
         // push_force allows the queue to temporarily exceed its target size.
         // The eviction loop below trims the cache back to capacity.

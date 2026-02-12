@@ -3,7 +3,7 @@ mod common;
 use bytes::Bytes;
 use common::MockS3Backend;
 use common::helpers::*;
-use minio_cache::{CacheKey, CachingProxy, range_to_string};
+use s3_cache::{CacheKey, CachingProxy, range_to_string};
 use s3s::S3;
 use s3s::dto::Range;
 

@@ -3,6 +3,7 @@ mod common;
 use bytes::Bytes;
 use common::MockS3Backend;
 use common::helpers::*;
+use minio_cache::CacheKey;
 use minio_cache::proxy_service::CachingProxy;
 use s3s::S3;
 use std::time::Duration;
@@ -269,4 +270,191 @@ async fn test_different_buckets_separate_cache() {
     // Both should be cached separately
     assert_cache_contains(&cache, "bucket-a", "key.txt").await;
     assert_cache_contains(&cache, "bucket-b", "key.txt").await;
+}
+
+#[tokio::test]
+async fn test_cache_byte_size_eviction() {
+    let backend = MockS3Backend::new();
+
+    // Each object is 500 bytes
+    let data = vec![b'a'; 500];
+    for i in 0..10 {
+        backend
+            .put_object_sync("test-bucket", &format!("sized{}.bin", i), &data)
+            .await;
+    }
+
+    // Cache with max_size of 2000 bytes (room for ~4 objects of 500 bytes)
+    let cache = create_test_cache(100, 2000, 300);
+    let proxy = CachingProxy::new(backend.clone(), cache.clone(), usize::MAX);
+
+    // Fetch all 10 objects
+    for i in 0..10 {
+        let req = build_get_request("test-bucket", &format!("sized{}.bin", i), None);
+        proxy.get_object(req).await.unwrap();
+    }
+
+    // Count cached entries — at most 4 should fit (2000 / 500)
+    let mut cached_count = 0;
+    for i in 0..10 {
+        let key = CacheKey::new(
+            "test-bucket".to_string(),
+            format!("sized{}.bin", i),
+            None,
+            None,
+        );
+        if cache.get(&key).await.is_some() {
+            cached_count += 1;
+        }
+    }
+
+    assert!(
+        cached_count <= 4,
+        "Expected at most 4 cached entries (2000B / 500B), found {}",
+        cached_count
+    );
+    assert!(cached_count > 0, "Expected some entries to be cached");
+}
+
+#[tokio::test]
+async fn test_backend_error_not_cached() {
+    let backend = MockS3Backend::new();
+    // Don't add the object — backend will return NoSuchKey
+
+    let cache = create_test_cache(100, usize::MAX, 300);
+    let proxy = CachingProxy::new(backend.clone(), cache.clone(), usize::MAX);
+
+    // Request non-existent object
+    let req = build_get_request("test-bucket", "missing.txt", None);
+    let result = proxy.get_object(req).await;
+    assert!(result.is_err(), "Should propagate backend error");
+
+    // Nothing should be cached
+    assert_cache_missing(&cache, "test-bucket", "missing.txt").await;
+    assert!(cache.is_empty().await);
+}
+
+#[tokio::test]
+async fn test_max_cacheable_size_rejects_large_objects() {
+    let backend = MockS3Backend::new();
+
+    let small_data = vec![b's'; 100];
+    let large_data = vec![b'l'; 5000];
+    backend
+        .put_object_sync("test-bucket", "small.bin", &small_data)
+        .await;
+    backend
+        .put_object_sync("test-bucket", "large.bin", &large_data)
+        .await;
+
+    // Proxy with max_cacheable_size = 1000 (rejects objects > 1KB)
+    let cache = create_test_cache(100, usize::MAX, 300);
+    let proxy = CachingProxy::new(backend.clone(), cache.clone(), 1000);
+
+    // Small object: should be cached
+    let req = build_get_request("test-bucket", "small.bin", None);
+    let resp = proxy.get_object(req).await.unwrap();
+    let body = extract_body(resp.output.body).await;
+    assert_eq!(body.len(), 100);
+    assert_cache_contains(&cache, "test-bucket", "small.bin").await;
+
+    // Large object: should stream through without caching
+    let req = build_get_request("test-bucket", "large.bin", None);
+    let resp = proxy.get_object(req).await.unwrap();
+    let body = extract_body(resp.output.body).await;
+    assert_eq!(body.len(), 5000);
+    assert_cache_missing(&cache, "test-bucket", "large.bin").await;
+
+    // Second request for large object hits backend again
+    let req = build_get_request("test-bucket", "large.bin", None);
+    proxy.get_object(req).await.unwrap();
+    assert_eq!(backend.get_request_count().await, 3); // small + large + large
+}
+
+#[tokio::test]
+async fn test_cache_hit_preserves_metadata() {
+    let backend = MockS3Backend::new();
+    backend
+        .put_object_sync("test-bucket", "meta.txt", b"hello")
+        .await;
+
+    let cache = create_test_cache(100, usize::MAX, 300);
+    let proxy = CachingProxy::new(backend.clone(), cache.clone(), usize::MAX);
+
+    // First request: cache miss
+    let req = build_get_request("test-bucket", "meta.txt", None);
+    let miss_resp = proxy.get_object(req).await.unwrap();
+    let miss_body = extract_body(miss_resp.output.body).await;
+    let miss_content_length = miss_resp.output.content_length;
+
+    // Second request: cache hit
+    let req = build_get_request("test-bucket", "meta.txt", None);
+    let hit_resp = proxy.get_object(req).await.unwrap();
+    let hit_body = extract_body(hit_resp.output.body).await;
+    let hit_content_length = hit_resp.output.content_length;
+
+    // Body and metadata should match between miss and hit responses
+    assert_eq!(miss_body, hit_body);
+    assert_eq!(miss_content_length, hit_content_length);
+    assert_eq!(hit_content_length, Some(5));
+    assert_eq!(backend.get_request_count().await, 1); // Only one backend call
+}
+
+#[tokio::test]
+async fn test_head_object_does_not_populate_cache() {
+    let backend = MockS3Backend::new();
+    backend
+        .put_object_sync("test-bucket", "head-test.txt", b"data")
+        .await;
+
+    let cache = create_test_cache(100, usize::MAX, 300);
+    let proxy = CachingProxy::new(backend.clone(), cache.clone(), usize::MAX);
+
+    // HEAD request — should be delegated, not cached
+    let req = s3s::S3Request {
+        input: s3s::dto::HeadObjectInput {
+            bucket: "test-bucket".to_string(),
+            key: "head-test.txt".to_string(),
+            ..Default::default()
+        },
+        method: http::Method::HEAD,
+        uri: http::Uri::from_static("/"),
+        headers: http::HeaderMap::new(),
+        extensions: Default::default(),
+        credentials: None,
+        region: None,
+        service: None,
+        trailing_headers: None,
+    };
+    let resp = proxy.head_object(req).await.unwrap();
+    assert_eq!(resp.output.content_length, Some(4));
+
+    // Cache should still be empty
+    assert!(cache.is_empty().await);
+}
+
+#[tokio::test]
+async fn test_put_then_get_sees_new_content() {
+    let backend = MockS3Backend::new();
+    backend
+        .put_object_sync("test-bucket", "mutable.txt", b"version1")
+        .await;
+
+    let cache = create_test_cache(100, usize::MAX, 300);
+    let proxy = CachingProxy::new(backend.clone(), cache.clone(), usize::MAX);
+
+    // GET: caches "version1"
+    let req = build_get_request("test-bucket", "mutable.txt", None);
+    let resp = proxy.get_object(req).await.unwrap();
+    assert_eq!(extract_body(resp.output.body).await, Bytes::from("version1"));
+
+    // PUT: updates to "version2" and invalidates cache
+    let req = build_put_request("test-bucket", "mutable.txt", Bytes::from("version2"));
+    proxy.put_object(req).await.unwrap();
+
+    // GET: should fetch fresh "version2" from backend
+    let req = build_get_request("test-bucket", "mutable.txt", None);
+    let resp = proxy.get_object(req).await.unwrap();
+    assert_eq!(extract_body(resp.output.body).await, Bytes::from("version2"));
+    assert_eq!(backend.get_request_count().await, 2);
 }

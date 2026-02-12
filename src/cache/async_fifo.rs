@@ -218,3 +218,6 @@ impl AsyncS3Cache {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

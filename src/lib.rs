@@ -74,6 +74,7 @@ pub async fn start_app(config: Config) -> Result<()> {
         proxy,
         cache,
         config.cache_max_object_size_bytes,
+        config.cache_dryrun,
     );
 
     // Build S3 service with auth

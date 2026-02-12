@@ -14,7 +14,7 @@ async fn test_put_invalidates_cache() {
         .await;
 
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = CachingProxy::new(backend.clone(), cache.clone(), usize::MAX);
+    let proxy = CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
 
     // First GET: populate cache
     let req = build_get_request("test-bucket", "file.txt", None);
@@ -48,7 +48,7 @@ async fn test_delete_invalidates_cache() {
         .await;
 
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = CachingProxy::new(backend.clone(), cache.clone(), usize::MAX);
+    let proxy = CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
 
     // GET: populate cache
     let req = build_get_request("test-bucket", "deleteme.txt", None);
@@ -77,7 +77,7 @@ async fn test_delete_objects_invalidates_all() {
     }
 
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = CachingProxy::new(backend.clone(), cache.clone(), usize::MAX);
+    let proxy = CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
 
     // GET all objects: populate cache
     for i in 0..5 {
@@ -112,7 +112,7 @@ async fn test_copy_invalidates_destination() {
         .await;
 
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = CachingProxy::new(backend.clone(), cache.clone(), usize::MAX);
+    let proxy = CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
 
     // GET destination: populate cache
     let req = build_get_request("test-bucket", "dest.txt", None);
@@ -143,7 +143,7 @@ async fn test_invalidation_removes_all_ranges() {
         .await;
 
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = CachingProxy::new(backend.clone(), cache.clone(), usize::MAX);
+    let proxy = CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
 
     // GET full object
     let req = build_get_request("test-bucket", "ranged.txt", None);
@@ -181,7 +181,7 @@ async fn test_put_only_invalidates_target_key() {
         .await;
 
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = CachingProxy::new(backend.clone(), cache.clone(), usize::MAX);
+    let proxy = CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
 
     // GET both files
     let req = build_get_request("test-bucket", "file1.txt", None);

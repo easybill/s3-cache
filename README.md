@@ -51,6 +51,10 @@ The cache uses a three-tier eviction strategy optimized for object storage workl
 
 This provides better hit rates than LRU for workloads with a mix of one-hit-wonders and frequently accessed objects.
 
+### Dry-Run Verification Mode
+
+When `CACHE_DRYRUN=true`, the cache is fully operational (populated, checked, evicted) but `GetObject` always returns the fresh upstream response. On every cache hit, the cached object is compared against the freshly fetched one. If they differ, a warning event is emitted with the cache key fields (`bucket`, `key`, `range`, `version_id`) and a `cache.mismatch` metric is incremented. This allows deploying the cache in production to verify correctness before switching to serving cached responses.
+
 ## Features
 
 - ✅ S3 protocol compatibility via `s3s` crate
@@ -66,23 +70,24 @@ This provides better hit rates than LRU for workloads with a mix of one-hit-wond
 
 All configuration is done via environment variables:
 
-| Variable                      | Default              | Description             |
-| ----------------------------- | -------------------- | ----------------------- |
-| `LISTEN_ADDR`                 | `0.0.0.0:8080`       | Proxy listen address    |
-| `UPSTREAM_ENDPOINT`           | *(required)*         | S3 endpoint URL         |
-| `UPSTREAM_ACCESS_KEY_ID`      | *(required)*         | Proxy's S3 credentials  |
-| `UPSTREAM_SECRET_ACCESS_KEY`  | *(required)*         | Proxy's S3 credentials  |
-| `UPSTREAM_REGION`             | `us-east-1`          | S3 region               |
-| `CLIENT_ACCESS_KEY_ID`        | *(required)*         | Client auth credentials |
-| `CLIENT_SECRET_ACCESS_KEY`    | *(required)*         | Client auth credentials |
-| `CACHE_ENABLED`               | `true`               | Enable/disable caching  |
-| `CACHE_SHARDS`                | `16`                 | Number of cache shards  |
-| `CACHE_MAX_ENTRIES`           | `10000`              | Max cached objects      |
-| `CACHE_MAX_SIZE_BYTES`        | `1073741824` (1 GiB) | Max cache size          |
-| `CACHE_MAX_OBJECT_SIZE_BYTES` | `10485760` (10 MiB)  | Skip caching above this |
-| `CACHE_TTL_SECONDS`           | `300`                | TTL for cached entries  |
-| `WORKER_THREADS`              | `4`                  | Tokio worker threads    |
-| `OTEL_GRPC_ENDPOINT_URL`      | *(optional)*         | OpenTelemetry collector |
+| Variable                      | Default              | Description                           |
+| ----------------------------- | -------------------- | ------------------------------------- |
+| `LISTEN_ADDR`                 | `0.0.0.0:8080`       | Proxy listen address                  |
+| `UPSTREAM_ENDPOINT`           | *(required)*         | S3 endpoint URL                       |
+| `UPSTREAM_ACCESS_KEY_ID`      | *(required)*         | Proxy's S3 credentials                |
+| `UPSTREAM_SECRET_ACCESS_KEY`  | *(required)*         | Proxy's S3 credentials                |
+| `UPSTREAM_REGION`             | `us-east-1`          | S3 region                             |
+| `CLIENT_ACCESS_KEY_ID`        | *(required)*         | Client auth credentials               |
+| `CLIENT_SECRET_ACCESS_KEY`    | *(required)*         | Client auth credentials               |
+| `CACHE_ENABLED`               | `true`               | Enable/disable caching                |
+| `CACHE_DRYRUN`                | `false`              | Dry-run verification mode (see below) |
+| `CACHE_SHARDS`                | `16`                 | Number of cache shards                |
+| `CACHE_MAX_ENTRIES`           | `10000`              | Max cached objects                    |
+| `CACHE_MAX_SIZE_BYTES`        | `1073741824` (1 GiB) | Max cache size                        |
+| `CACHE_MAX_OBJECT_SIZE_BYTES` | `10485760` (10 MiB)  | Skip caching above this               |
+| `CACHE_TTL_SECONDS`           | `300`                | TTL for cached entries                |
+| `WORKER_THREADS`              | `4`                  | Tokio worker threads                  |
+| `OTEL_GRPC_ENDPOINT_URL`      | *(optional)*         | OpenTelemetry collector               |
 
 ## Building
 
@@ -149,13 +154,14 @@ aws s3 cp s3://my-bucket/file.txt . --endpoint-url http://localhost:8080
 
 When `OTEL_GRPC_ENDPOINT_URL` is configured, the following metrics are exported:
 
-| Metric               | Type    | Description                      |
-| -------------------- | ------- | -------------------------------- |
-| `cache.hit`          | Counter | Number of cache hits             |
-| `cache.miss`         | Counter | Number of cache misses           |
-| `cache.invalidation` | Counter | Number of cache invalidations    |
-| `cache.size_bytes`   | Gauge   | Current cache size in bytes      |
-| `cache.entry_count`  | Gauge   | Current number of cached entries |
+| Metric               | Type    | Description                         |
+| -------------------- | ------- | ----------------------------------- |
+| `cache.hit`          | Counter | Number of cache hits                |
+| `cache.miss`         | Counter | Number of cache misses              |
+| `cache.invalidation` | Counter | Number of cache invalidations       |
+| `cache.mismatch`     | Counter | Mismatches detected in dry-run mode |
+| `cache.size_bytes`   | Gauge   | Current cache size in bytes         |
+| `cache.entry_count`  | Gauge   | Current number of cached entries    |
 
 ## Testing
 

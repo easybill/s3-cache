@@ -153,8 +153,9 @@ async fn main() {
         ));
         Arc::new(CachingProxy::new(
             backend.clone(),
-            cache,
+            Some(cache),
             args.max_cacheable_size,
+            false,
         ))
     };
 

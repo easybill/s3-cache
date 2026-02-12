@@ -13,6 +13,7 @@ pub struct Config {
     pub client_access_key_id: String,
     pub client_secret_access_key: String,
     pub cache_enabled: bool,
+    pub cache_dryrun: bool,
     pub cache_shards: usize,
     pub cache_max_entries: usize,
     pub cache_max_size_bytes: usize,
@@ -57,6 +58,10 @@ impl Config {
                 .get("CACHE_ENABLED")
                 .map(|s| s.parse().expect("invalid CACHE_ENABLED"))
                 .unwrap_or(true),
+            cache_dryrun: vars
+                .get("CACHE_DRYRUN")
+                .map(|s| s.parse().expect("invalid CACHE_DRYRUN"))
+                .unwrap_or(false),
             cache_shards: vars
                 .get("CACHE_SHARDS")
                 .map(|s| s.parse().expect("invalid CACHE_SHARDS"))
@@ -120,7 +125,8 @@ impl Display for Config {
             f,
             "Config{{ listen_addr: {}, upstream_endpoint: {}, upstream_region: {}, \
              cache_max_entries: {}, cache_max_size_bytes: {}, cache_ttl_seconds: {}, \
-             max_cacheable_object_size: {}, otel_grpc_endpoint_url: {:?}, cache_shards: {}, worker_threads: {} }}",
+             max_cacheable_object_size: {}, otel_grpc_endpoint_url: {:?}, cache_shards: {}, \
+             cache_dryrun: {}, worker_threads: {} }}",
             self.listen_addr,
             self.upstream_endpoint,
             self.upstream_region,
@@ -130,6 +136,7 @@ impl Display for Config {
             self.cache_max_object_size_bytes,
             self.otel_grpc_endpoint_url,
             self.cache_shards,
+            self.cache_dryrun,
             self.worker_threads,
         )
     }

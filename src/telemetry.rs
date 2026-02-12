@@ -159,6 +159,17 @@ pub(crate) fn record_cache_invalidation() {
     CACHE_INVALIDATION.add(1, &[]);
 }
 
+static CACHE_MISMATCH: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    opentelemetry::global::meter(CARGO_CRATE_NAME)
+        .u64_counter("cache.mismatch")
+        .with_description("Number of cache mismatches detected in dryrun mode")
+        .build()
+});
+
+pub(crate) fn record_cache_mismatch() {
+    CACHE_MISMATCH.add(1, &[]);
+}
+
 pub(crate) fn record_cache_stats(entry_count: usize, size_bytes: usize) {
     CACHE_SIZE_BYTES.record(size_bytes as u64, &[]);
     CACHE_ENTRY_COUNT.record(entry_count as u64, &[]);

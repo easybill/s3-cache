@@ -16,14 +16,25 @@ pub struct CachingProxy<T = Proxy> {
     inner: T,
     cache: Option<Arc<AsyncS3Cache>>,
     max_cacheable_size: usize,
+    /// Dry-run mode: the cache is populated and checked, but get_object always
+    /// returns the fresh upstream response. On cache hit the cached body is
+    /// compared against the fresh body and a `cache.mismatch` event is emitted
+    /// when they differ.
+    dryrun: bool,
 }
 
 impl<T> CachingProxy<T> {
-    pub fn new(inner: T, cache: Option<Arc<AsyncS3Cache>>, max_cacheable_size: usize) -> Self {
+    pub fn new(
+        inner: T,
+        cache: Option<Arc<AsyncS3Cache>>,
+        max_cacheable_size: usize,
+        dryrun: bool,
+    ) -> Self {
         Self {
             inner,
             cache,
             max_cacheable_size,
+            dryrun,
         }
     }
 }
@@ -34,8 +45,9 @@ impl CachingProxy<Proxy> {
         inner: Proxy,
         cache: Option<Arc<AsyncS3Cache>>,
         max_cacheable_size: usize,
+        dryrun: bool,
     ) -> Self {
-        Self::new(inner, cache, max_cacheable_size)
+        Self::new(inner, cache, max_cacheable_size, dryrun)
     }
 }
 
@@ -68,27 +80,36 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
         let cache_key = CacheKey::new(bucket.clone(), key.clone(), range_str.clone(), version_id);
 
         // Check cache
-        if let Some(cache) = &self.cache {
+        let cached_hit = if let Some(cache) = &self.cache {
             if let Some(cached) = cache.get(&cache_key).await {
                 debug!(bucket = %bucket, key = %key, "cache hit");
                 telemetry::record_cache_hit();
                 cache.report_stats().await;
 
-                let body = StreamingBlob::from(s3s::Body::from(cached.body.clone()));
-                let output = GetObjectOutput {
-                    body: Some(body),
-                    content_length: Some(cached.content_length),
-                    content_type: cached.content_type.clone(),
-                    e_tag: cached.e_tag.clone(),
-                    last_modified: cached.last_modified.clone(),
-                    ..Default::default()
-                };
-                return Ok(S3Response::new(output));
-            }
-        }
+                if !self.dryrun {
+                    let body = StreamingBlob::from(s3s::Body::from(cached.body.clone()));
+                    let output = GetObjectOutput {
+                        body: Some(body),
+                        content_length: Some(cached.content_length),
+                        content_type: cached.content_type.clone(),
+                        e_tag: cached.e_tag.clone(),
+                        last_modified: cached.last_modified.clone(),
+                        ..Default::default()
+                    };
+                    return Ok(S3Response::new(output));
+                }
 
-        debug!(bucket = %bucket, key = %key, "cache miss");
-        telemetry::record_cache_miss();
+                Some(cached)
+            } else {
+                debug!(bucket = %bucket, key = %key, "cache miss");
+                telemetry::record_cache_miss();
+                None
+            }
+        } else {
+            debug!(bucket = %bucket, key = %key, "cache miss");
+            telemetry::record_cache_miss();
+            None
+        };
 
         // Forward to upstream — reconstruct request since we moved range out
         let get_req = req.map_input(|mut input| {
@@ -133,6 +154,30 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
                     output.last_modified.clone(),
                     content_length,
                 );
+
+                // In dryrun mode, compare the fresh body against the cached one
+                if self.dryrun {
+                    if let Some(cached_hit) = &cached_hit {
+                        if cached_hit.body != bytes
+                            || cached_hit.content_type != output.content_type
+                            || cached_hit.e_tag != output.e_tag
+                            || cached_hit.last_modified != output.last_modified
+                        {
+                            warn!(
+                                bucket = %cache_key.bucket,
+                                key = %cache_key.key,
+                                range = ?cache_key.range,
+                                version_id = ?cache_key.version_id,
+                                cached_len = cached_hit.body.len(),
+                                fresh_len = bytes.len(),
+                                "cache mismatch: cached object differs from upstream"
+                            );
+                            telemetry::record_cache_mismatch();
+                        } else {
+                            debug!(bucket = %bucket, key = %key, "dryrun: cached object matches upstream");
+                        }
+                    }
+                }
 
                 if let Some(cache) = &self.cache {
                     let _existing = cache.insert(cache_key, cached).await;

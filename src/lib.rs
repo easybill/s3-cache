@@ -10,12 +10,13 @@ use s3s::service::S3ServiceBuilder;
 use tokio::net::TcpListener;
 use tracing::{debug, error, info};
 
-pub use self::cache::AsyncS3Cache;
-pub use self::cache::{CacheKey, CachedObject};
+pub use self::async_cache::AsyncS3Cache;
+pub use self::cache::{CacheKey, CachedObject, S3FifoCache};
 pub use self::config::Config;
 pub use self::error::ApplicationError;
 pub use self::proxy_service::{CachingProxy, range_to_string};
 
+mod async_cache;
 mod auth;
 mod cache;
 mod config;

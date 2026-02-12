@@ -2,14 +2,12 @@ use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::hash::Hash;
 
-pub use self::async_fifo::*;
 pub use self::entry::ValueEntry;
 pub use self::fifo::*;
 pub use self::ghost_list::*;
 pub use self::key::CacheKey;
 pub use self::object::CachedObject;
 
-mod async_fifo;
 mod entry;
 mod fifo;
 mod ghost_list;

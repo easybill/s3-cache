@@ -17,6 +17,9 @@ mod object;
 type ValuesMap<K, V> = HashMap<K, ValueEntry<V>>;
 
 /// S3-FIFO cache: a cache that uses the S3-FIFO eviction strategy.
+///
+/// Note: The `S3` in `S3FifoCache` refers to `S3-FIFO`'s three
+/// internal static queues, not to Amazon's `S3` web service.
 pub struct S3FifoCache<K, V> {
     values: ValuesMap<K, V>,
 

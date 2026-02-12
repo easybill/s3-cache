@@ -33,10 +33,12 @@ impl AsyncS3CacheShard {
     }
 }
 
-/// Async sharded wrapper around S3FifoCache for use with tokio.
+/// Async sharded wrapper around `S3FifoCache` for use with tokio.
 ///
 /// Keys are distributed across shards by hashing, each guarded by its own
 /// `RwLock`. All shards share a single global size budget tracked via atomics.
+///
+/// Note: The `S3` in `AsyncS3Cache` refers to Amazon's `S3` web service.
 pub struct AsyncS3Cache {
     shards: Vec<AsyncS3CacheShard>,
     // Time-to-live

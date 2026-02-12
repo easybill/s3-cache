@@ -12,6 +12,7 @@ pub struct Config {
     pub upstream_region: String,
     pub client_access_key_id: String,
     pub client_secret_access_key: String,
+    pub cache_enabled: bool,
     pub cache_shards: usize,
     pub cache_max_entries: usize,
     pub cache_max_size_bytes: usize,
@@ -52,6 +53,10 @@ impl Config {
                 .get("CLIENT_SECRET_ACCESS_KEY")
                 .cloned()
                 .expect("CLIENT_SECRET_ACCESS_KEY is required"),
+            cache_enabled: vars
+                .get("CACHE_ENABLED")
+                .map(|s| s.parse().expect("invalid CACHE_ENABLED"))
+                .unwrap_or(true),
             cache_shards: vars
                 .get("CACHE_SHARDS")
                 .map(|s| s.parse().expect("invalid CACHE_SHARDS"))

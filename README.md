@@ -75,6 +75,7 @@ All configuration is done via environment variables:
 | `UPSTREAM_REGION`             | `us-east-1`          | S3 region               |
 | `CLIENT_ACCESS_KEY_ID`        | *(required)*         | Client auth credentials |
 | `CLIENT_SECRET_ACCESS_KEY`    | *(required)*         | Client auth credentials |
+| `CACHE_ENABLED`               | `true`               | Enable/disable caching  |
 | `CACHE_SHARDS`                | `16`                 | Number of cache shards  |
 | `CACHE_MAX_ENTRIES`           | `10000`              | Max cached objects      |
 | `CACHE_MAX_SIZE_BYTES`        | `1073741824` (1 GiB) | Max cache size          |

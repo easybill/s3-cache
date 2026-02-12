@@ -14,12 +14,12 @@ use crate::telemetry;
 #[derive(Clone)]
 pub struct CachingProxy<T = Proxy> {
     inner: T,
-    cache: Arc<AsyncS3Cache>,
+    cache: Option<Arc<AsyncS3Cache>>,
     max_cacheable_size: usize,
 }
 
 impl<T> CachingProxy<T> {
-    pub fn new(inner: T, cache: Arc<AsyncS3Cache>, max_cacheable_size: usize) -> Self {
+    pub fn new(inner: T, cache: Option<Arc<AsyncS3Cache>>, max_cacheable_size: usize) -> Self {
         Self {
             inner,
             cache,
@@ -32,7 +32,7 @@ impl CachingProxy<Proxy> {
     /// Convenience constructor for the common case of wrapping s3s_aws::Proxy
     pub fn from_aws_proxy(
         inner: Proxy,
-        cache: Arc<AsyncS3Cache>,
+        cache: Option<Arc<AsyncS3Cache>>,
         max_cacheable_size: usize,
     ) -> Self {
         Self::new(inner, cache, max_cacheable_size)
@@ -68,21 +68,23 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
         let cache_key = CacheKey::new(bucket.clone(), key.clone(), range_str.clone(), version_id);
 
         // Check cache
-        if let Some(cached) = self.cache.get(&cache_key).await {
-            debug!(bucket = %bucket, key = %key, "cache hit");
-            telemetry::record_cache_hit();
-            self.cache.report_stats().await;
+        if let Some(cache) = &self.cache {
+            if let Some(cached) = cache.get(&cache_key).await {
+                debug!(bucket = %bucket, key = %key, "cache hit");
+                telemetry::record_cache_hit();
+                cache.report_stats().await;
 
-            let body = StreamingBlob::from(s3s::Body::from(cached.body.clone()));
-            let output = GetObjectOutput {
-                body: Some(body),
-                content_length: Some(cached.content_length),
-                content_type: cached.content_type.clone(),
-                e_tag: cached.e_tag.clone(),
-                last_modified: cached.last_modified.clone(),
-                ..Default::default()
-            };
-            return Ok(S3Response::new(output));
+                let body = StreamingBlob::from(s3s::Body::from(cached.body.clone()));
+                let output = GetObjectOutput {
+                    body: Some(body),
+                    content_length: Some(cached.content_length),
+                    content_type: cached.content_type.clone(),
+                    e_tag: cached.e_tag.clone(),
+                    last_modified: cached.last_modified.clone(),
+                    ..Default::default()
+                };
+                return Ok(S3Response::new(output));
+            }
         }
 
         debug!(bucket = %bucket, key = %key, "cache miss");
@@ -132,9 +134,11 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
                     content_length,
                 );
 
-                let _existing = self.cache.insert(cache_key, cached).await;
-                debug!(bucket = %bucket, key = %key, size = content_length, "cached object");
-                self.cache.report_stats().await;
+                if let Some(cache) = &self.cache {
+                    let _existing = cache.insert(cache_key, cached).await;
+                    debug!(bucket = %bucket, key = %key, size = content_length, "cached object");
+                    cache.report_stats().await;
+                }
 
                 let new_body = StreamingBlob::from(s3s::Body::from(bytes));
                 let new_output = GetObjectOutput {
@@ -186,11 +190,14 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
 
         let resp = self.inner.put_object(req).await?;
 
-        let count = self.cache.invalidate_object(&bucket, &key).await;
-        if count > 0 {
-            debug!(bucket = %bucket, key = %key, count, "invalidated cache entries on put");
-            telemetry::record_cache_invalidation();
-            self.cache.report_stats().await;
+        if let Some(cache) = &self.cache {
+            let count = cache.invalidate_object(&bucket, &key).await;
+
+            if count > 0 {
+                debug!(bucket = %bucket, key = %key, count, "invalidated cache entries on put");
+                telemetry::record_cache_invalidation();
+                cache.report_stats().await;
+            }
         }
 
         Ok(resp)
@@ -205,11 +212,14 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
 
         let resp = self.inner.delete_object(req).await?;
 
-        let count = self.cache.invalidate_object(&bucket, &key).await;
-        if count > 0 {
-            debug!(bucket = %bucket, key = %key, count, "invalidated cache entries on delete");
-            telemetry::record_cache_invalidation();
-            self.cache.report_stats().await;
+        if let Some(cache) = &self.cache {
+            let count = cache.invalidate_object(&bucket, &key).await;
+
+            if count > 0 {
+                debug!(bucket = %bucket, key = %key, count, "invalidated cache entries on delete");
+                telemetry::record_cache_invalidation();
+                cache.report_stats().await;
+            }
         }
 
         Ok(resp)
@@ -230,14 +240,17 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
 
         let resp = self.inner.delete_objects(req).await?;
 
-        for key in &keys {
-            let count = self.cache.invalidate_object(&bucket, key).await;
-            if count > 0 {
-                debug!(bucket = %bucket, key = %key, count, "invalidated cache entries on batch delete");
-                telemetry::record_cache_invalidation();
+        if let Some(cache) = &self.cache {
+            for key in &keys {
+                let count = cache.invalidate_object(&bucket, key).await;
+
+                if count > 0 {
+                    debug!(bucket = %bucket, key = %key, count, "invalidated cache entries on batch delete");
+                    telemetry::record_cache_invalidation();
+                }
             }
+            cache.report_stats().await;
         }
-        self.cache.report_stats().await;
 
         Ok(resp)
     }
@@ -251,11 +264,14 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
 
         let resp = self.inner.copy_object(req).await?;
 
-        let count = self.cache.invalidate_object(&dest_bucket, &dest_key).await;
-        if count > 0 {
-            debug!(bucket = %dest_bucket, key = %dest_key, count, "invalidated cache entries on copy");
-            telemetry::record_cache_invalidation();
-            self.cache.report_stats().await;
+        if let Some(cache) = &self.cache {
+            let count = cache.invalidate_object(&dest_bucket, &dest_key).await;
+
+            if count > 0 {
+                debug!(bucket = %dest_bucket, key = %dest_key, count, "invalidated cache entries on copy");
+                telemetry::record_cache_invalidation();
+                cache.report_stats().await;
+            }
         }
 
         Ok(resp)
@@ -279,11 +295,14 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
 
         let resp = self.inner.complete_multipart_upload(req).await?;
 
-        let count = self.cache.invalidate_object(&bucket, &key).await;
-        if count > 0 {
-            debug!(bucket = %bucket, key = %key, count, "invalidated cache entries on multipart upload completion");
-            telemetry::record_cache_invalidation();
-            self.cache.report_stats().await;
+        if let Some(cache) = &self.cache {
+            let count = cache.invalidate_object(&bucket, &key).await;
+
+            if count > 0 {
+                debug!(bucket = %bucket, key = %key, count, "invalidated cache entries on multipart upload completion");
+                telemetry::record_cache_invalidation();
+                cache.report_stats().await;
+            }
         }
 
         Ok(resp)

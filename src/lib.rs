@@ -60,16 +60,21 @@ pub async fn start_app(config: Config) -> Result<()> {
     let proxy = s3s_aws::Proxy::from(s3_client);
 
     // Build cache
-    let cache = Arc::new(AsyncS3Cache::new(
-        config.cache_max_entries,
-        config.cache_max_size_bytes,
-        Duration::from_secs(config.cache_ttl_seconds as u64),
-        config.cache_shards,
-    ));
+    let cache = config.cache_enabled.then(|| {
+        Arc::new(AsyncS3Cache::new(
+            config.cache_max_entries,
+            config.cache_max_size_bytes,
+            Duration::from_secs(config.cache_ttl_seconds as u64),
+            config.cache_shards,
+        ))
+    });
 
     // Build caching proxy
-    let caching_proxy =
-        proxy_service::CachingProxy::from_aws_proxy(proxy, cache, config.max_cacheable_object_size);
+    let caching_proxy = proxy_service::CachingProxy::from_aws_proxy(
+        proxy,
+        cache,
+        config.cache_max_object_size_bytes,
+    );
 
     // Build S3 service with auth
     let service = {

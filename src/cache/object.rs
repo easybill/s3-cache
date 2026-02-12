@@ -9,8 +9,6 @@ use mock_instant::global::Instant;
 use bytes::Bytes;
 use s3s::dto::{ContentType, ETag, LastModified};
 
-use crate::cache::Cacheable;
-
 /// A cached S3 object with its body and metadata.
 pub struct CachedObject {
     pub body: Bytes,
@@ -42,10 +40,8 @@ impl CachedObject {
     pub fn is_expired(&self, ttl: Duration) -> bool {
         self.inserted_at.elapsed() > ttl
     }
-}
 
-impl Cacheable for CachedObject {
-    fn size(&self) -> usize {
+    pub fn size(&self) -> usize {
         self.body.len()
     }
 }

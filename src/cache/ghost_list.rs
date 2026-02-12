@@ -5,20 +5,31 @@ use std::{borrow::Borrow, collections::VecDeque, hash::Hash};
 pub struct GhostList<K> {
     map: HashSet<K>,
     queue: VecDeque<K>,
-    max_count: usize,
+    max_len: usize,
 }
 
 impl<K: Clone + Eq + Hash> GhostList<K> {
-    pub fn new(max_count: usize) -> Self {
+    pub fn new(max_len: usize) -> Self {
         Self {
             map: HashSet::new(),
             queue: VecDeque::new(),
-            max_count,
+            max_len: max_len,
         }
     }
 
+    #[inline]
     pub fn len(&self) -> usize {
         self.map.len()
+    }
+
+    #[inline]
+    pub fn max_len(&self) -> usize {
+        self.max_len
+    }
+
+    #[inline]
+    pub fn is_full(&self) -> bool {
+        self.len() == self.max_len()
     }
 
     pub fn contains<Q>(&self, key: &Q) -> bool
@@ -34,7 +45,7 @@ impl<K: Clone + Eq + Hash> GhostList<K> {
             return;
         }
 
-        while self.len() >= self.max_count {
+        while self.len() >= self.max_len {
             self.evict_oldest();
         }
 
@@ -60,7 +71,7 @@ impl<K: Clone + Eq + Hash> GhostList<K> {
         None
     }
 
-    pub fn should_compact(&self) -> bool {
+    fn should_compact(&self) -> bool {
         self.queue.len() > self.map.len() * 2
     }
 

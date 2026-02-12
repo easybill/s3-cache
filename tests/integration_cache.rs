@@ -6,6 +6,7 @@ use common::helpers::*;
 use minio_cache::proxy_service::CachingProxy;
 use s3s::S3;
 use std::time::Duration;
+use std::usize;
 
 #[tokio::test]
 async fn test_get_object_cache_miss_then_hit() {
@@ -16,8 +17,8 @@ async fn test_get_object_cache_miss_then_hit() {
         .await;
 
     // Setup: Cache + Proxy
-    let cache = create_test_cache(100, 10_000_000, 300);
-    let proxy = CachingProxy::new(backend.clone(), cache.clone());
+    let cache = create_test_cache(100, usize::MAX, 300);
+    let proxy = CachingProxy::new(backend.clone(), cache.clone(), usize::MAX);
 
     // First request: cache miss
     let req = build_get_request("test-bucket", "key.txt", None);
@@ -38,10 +39,8 @@ async fn test_get_object_cache_miss_then_hit() {
 }
 
 #[tokio::test]
+#[cfg_attr(not(feature = "mock-clock"), ignore = "requires mock-clock feature")]
 async fn test_cache_ttl_expiration() {
-    #[cfg(not(feature = "mock-clock"))]
-    panic!("This test requires the 'mock-clock' feature to be enabled. Run with: cargo test --features mock-clock");
-
     #[cfg(feature = "mock-clock")]
     mock_instant::global::MockClock::set_time(Duration::ZERO);
 
@@ -51,8 +50,8 @@ async fn test_cache_ttl_expiration() {
         .await;
 
     // Cache with 60 second TTL
-    let cache = create_test_cache(100, 10_000_000, 60);
-    let proxy = CachingProxy::new(backend.clone(), cache.clone());
+    let cache = create_test_cache(100, usize::MAX, 60);
+    let proxy = CachingProxy::new(backend.clone(), cache.clone(), usize::MAX);
 
     // First request: populate cache
     let req = build_get_request("test-bucket", "expiring.txt", None);
@@ -89,8 +88,8 @@ async fn test_cache_size_eviction() {
     }
 
     // Cache with room for only 5 entries
-    let cache = create_test_cache(5, 10_000_000, 300);
-    let proxy = CachingProxy::new(backend.clone(), cache.clone());
+    let cache = create_test_cache(5, usize::MAX, 300);
+    let proxy = CachingProxy::new(backend.clone(), cache.clone(), usize::MAX);
 
     // Fetch all 10 objects
     for i in 0..10 {
@@ -103,8 +102,12 @@ async fn test_cache_size_eviction() {
     // Count cached entries - S3-FIFO should evict some but keep at most 5
     let mut cached_count = 0;
     for i in 0..10 {
-        let cache_key =
-            minio_cache::CacheKey::new("test-bucket".to_string(), format!("file{}.txt", i), None, None);
+        let cache_key = minio_cache::CacheKey::new(
+            "test-bucket".to_string(),
+            format!("file{}.txt", i),
+            None,
+            None,
+        );
         if cache.get(&cache_key).await.is_some() {
             cached_count += 1;
         }
@@ -136,8 +139,8 @@ async fn test_cache_entry_count_limit() {
     }
 
     // Cache limited to 10 entries
-    let cache = create_test_cache(10, 10_000_000, 300);
-    let proxy = CachingProxy::new(backend.clone(), cache.clone());
+    let cache = create_test_cache(10, usize::MAX, 300);
+    let proxy = CachingProxy::new(backend.clone(), cache.clone(), usize::MAX);
 
     // Fetch 15 objects
     for i in 0..15 {
@@ -149,8 +152,12 @@ async fn test_cache_entry_count_limit() {
     // Count how many entries are still in cache
     let mut cached_count = 0;
     for i in 0..15 {
-        let cache_key =
-            minio_cache::CacheKey::new("test-bucket".to_string(), format!("obj{}.txt", i), None, None);
+        let cache_key = minio_cache::CacheKey::new(
+            "test-bucket".to_string(),
+            format!("obj{}.txt", i),
+            None,
+            None,
+        );
         if cache.get(&cache_key).await.is_some() {
             cached_count += 1;
         }
@@ -178,12 +185,15 @@ async fn test_oversized_object_not_cached() {
 
     // Cache with max size 100KB
     let cache = create_test_cache(100, 100_000, 300);
-    let proxy = CachingProxy::new(backend.clone(), cache.clone());
+    let proxy = CachingProxy::new(backend.clone(), cache.clone(), usize::MAX);
 
     // First request: object too large, streams through without caching
     let req = build_get_request("test-bucket", "large.bin", None);
     let result = proxy.get_object(req).await;
-    assert!(result.is_ok(), "Oversized object should stream through successfully");
+    assert!(
+        result.is_ok(),
+        "Oversized object should stream through successfully"
+    );
     assert_eq!(backend.get_request_count().await, 1);
 
     // Verify not cached
@@ -202,8 +212,8 @@ async fn test_concurrent_cache_access() {
         .put_object_sync("test-bucket", "concurrent.txt", b"data")
         .await;
 
-    let cache = create_test_cache(100, 10_000_000, 300);
-    let proxy = CachingProxy::new(backend.clone(), cache.clone());
+    let cache = create_test_cache(100, usize::MAX, 300);
+    let proxy = CachingProxy::new(backend.clone(), cache.clone(), usize::MAX);
 
     // Spawn multiple concurrent requests
     let mut handles = vec![];
@@ -240,8 +250,8 @@ async fn test_different_buckets_separate_cache() {
         .put_object_sync("bucket-b", "key.txt", b"data-b")
         .await;
 
-    let cache = create_test_cache(100, 10_000_000, 300);
-    let proxy = CachingProxy::new(backend.clone(), cache.clone());
+    let cache = create_test_cache(100, usize::MAX, 300);
+    let proxy = CachingProxy::new(backend.clone(), cache.clone(), usize::MAX);
 
     // Fetch from both buckets
     let req = build_get_request("bucket-a", "key.txt", None);

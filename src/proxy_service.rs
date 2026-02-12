@@ -15,18 +15,27 @@ use crate::telemetry;
 pub struct CachingProxy<T = Proxy> {
     inner: T,
     cache: Arc<AsyncS3Cache>,
+    max_cacheable_size: usize,
 }
 
 impl<T> CachingProxy<T> {
-    pub fn new(inner: T, cache: Arc<AsyncS3Cache>) -> Self {
-        Self { inner, cache }
+    pub fn new(inner: T, cache: Arc<AsyncS3Cache>, max_cacheable_size: usize) -> Self {
+        Self {
+            inner,
+            cache,
+            max_cacheable_size,
+        }
     }
 }
 
 impl CachingProxy<Proxy> {
     /// Convenience constructor for the common case of wrapping s3s_aws::Proxy
-    pub fn from_aws_proxy(inner: Proxy, cache: Arc<AsyncS3Cache>) -> Self {
-        Self::new(inner, cache)
+    pub fn from_aws_proxy(
+        inner: Proxy,
+        cache: Arc<AsyncS3Cache>,
+        max_cacheable_size: usize,
+    ) -> Self {
+        Self::new(inner, cache, max_cacheable_size)
     }
 }
 
@@ -88,16 +97,16 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
         let resp = self.inner.get_object(get_req).await?;
         let output = resp.output;
 
-        let max_size = self.cache.max_cacheable_size();
+        let max_cacheable_size = self.max_cacheable_size;
 
         // Check if object is too large to cache based on Content-Length
         if let Some(content_length) = output.content_length {
-            if content_length > max_size as i64 {
+            if (content_length as u64) > (max_cacheable_size as u64) {
                 debug!(
                     bucket = %bucket,
                     key = %key,
                     size = content_length,
-                    max_size,
+                    max_cacheable_size,
                     "object too large to cache, streaming through"
                 );
                 // Stream through without caching
@@ -112,7 +121,7 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
 
         let mut body = s3s::Body::from(body_blob);
 
-        match body.store_all_limited(max_size).await {
+        match body.store_all_limited(max_cacheable_size).await {
             Ok(bytes) => {
                 let content_length = bytes.len() as i64;
                 let cached = CachedObject::new(
@@ -123,10 +132,8 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
                     content_length,
                 );
 
-                let inserted = self.cache.insert(cache_key, cached).await;
-                if inserted {
-                    debug!(bucket = %bucket, key = %key, size = content_length, "cached object");
-                }
+                let _existing = self.cache.insert(cache_key, cached).await;
+                debug!(bucket = %bucket, key = %key, size = content_length, "cached object");
                 self.cache.report_stats().await;
 
                 let new_body = StreamingBlob::from(s3s::Body::from(bytes));

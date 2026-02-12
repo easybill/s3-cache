@@ -14,7 +14,6 @@ static RESOURCE: LazyLock<opentelemetry_sdk::Resource> = LazyLock::new(|| {
         .build()
 });
 
-
 pub(crate) fn initialize_telemetry(
     config: &Config,
 ) -> crate::Result<(
@@ -111,7 +110,6 @@ pub(crate) fn shutdown_metrics(metric_provider: opentelemetry_sdk::metrics::SdkM
     }
 }
 
-
 // Cache metrics
 
 static CACHE_HIT: LazyLock<Counter<u64>> = LazyLock::new(|| {
@@ -161,7 +159,7 @@ pub(crate) fn record_cache_invalidation() {
     CACHE_INVALIDATION.add(1, &[]);
 }
 
-pub(crate) fn record_cache_stats(entry_count: u64, size_bytes: u64) {
-    CACHE_SIZE_BYTES.record(size_bytes, &[]);
-    CACHE_ENTRY_COUNT.record(entry_count, &[]);
+pub(crate) fn record_cache_stats(entry_count: usize, size_bytes: usize) {
+    CACHE_SIZE_BYTES.record(size_bytes as u64, &[]);
+    CACHE_ENTRY_COUNT.record(entry_count as u64, &[]);
 }

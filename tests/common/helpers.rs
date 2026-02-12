@@ -3,7 +3,6 @@ use http::{HeaderMap, Method, Uri};
 use minio_cache::{AsyncS3Cache, CacheKey};
 use s3s::dto::*;
 use s3s::{Body, S3Request};
-use std::num::{NonZeroU64, NonZeroUsize};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -176,12 +175,11 @@ pub fn build_copy_request(
 }
 
 /// Create a test cache with specified parameters
-pub fn create_test_cache(max_entries: u64, max_size: usize, ttl_secs: u64) -> Arc<AsyncS3Cache> {
+pub fn create_test_cache(max_entries: usize, max_size: usize, ttl_secs: u64) -> Arc<AsyncS3Cache> {
     Arc::new(AsyncS3Cache::new(
-        NonZeroU64::new(max_entries).unwrap(),
-        NonZeroUsize::new(max_size).unwrap(),
-        Duration::from_secs(ttl_secs),
+        max_entries,
         max_size,
+        Duration::from_secs(ttl_secs),
     ))
 }
 

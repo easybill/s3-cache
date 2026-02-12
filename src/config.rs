@@ -12,9 +12,9 @@ pub struct Config {
     pub upstream_region: String,
     pub client_access_key_id: String,
     pub client_secret_access_key: String,
-    pub cache_max_entries: u64,
+    pub cache_max_entries: usize,
     pub cache_max_size_bytes: usize,
-    pub cache_ttl_seconds: u64,
+    pub cache_ttl_seconds: usize,
     pub max_cacheable_object_size: usize,
     pub otel_grpc_endpoint_url: Option<String>,
     pub worker_threads: usize,
@@ -126,11 +126,23 @@ mod tests {
 
     fn minimal_env() -> HashMap<String, String> {
         let mut env = HashMap::new();
-        env.insert("UPSTREAM_ENDPOINT".to_string(), "http://minio:9000".to_string());
-        env.insert("UPSTREAM_ACCESS_KEY_ID".to_string(), "minioadmin".to_string());
-        env.insert("UPSTREAM_SECRET_ACCESS_KEY".to_string(), "minioadmin".to_string());
+        env.insert(
+            "UPSTREAM_ENDPOINT".to_string(),
+            "http://minio:9000".to_string(),
+        );
+        env.insert(
+            "UPSTREAM_ACCESS_KEY_ID".to_string(),
+            "minioadmin".to_string(),
+        );
+        env.insert(
+            "UPSTREAM_SECRET_ACCESS_KEY".to_string(),
+            "minioadmin".to_string(),
+        );
         env.insert("CLIENT_ACCESS_KEY_ID".to_string(), "testclient".to_string());
-        env.insert("CLIENT_SECRET_ACCESS_KEY".to_string(), "testclient".to_string());
+        env.insert(
+            "CLIENT_SECRET_ACCESS_KEY".to_string(),
+            "testclient".to_string(),
+        );
         env
     }
 

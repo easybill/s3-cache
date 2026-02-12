@@ -19,7 +19,7 @@ mod object;
 type ValuesMap<K, V> = HashMap<K, ValueEntry<V>>;
 
 /// S3-FIFO cache: a cache that uses the S3-FIFO eviction strategy.
-pub struct S3FiFoCache<K, V> {
+pub struct S3FifoCache<K, V> {
     values: ValuesMap<K, V>,
 
     small: FiFoQueue<K>,
@@ -27,7 +27,7 @@ pub struct S3FiFoCache<K, V> {
     ghost: GhostList<K>,
 }
 
-impl<K: Clone + Eq + Hash, V> S3FiFoCache<K, V> {
+impl<K: Clone + Eq + Hash, V> S3FifoCache<K, V> {
     pub fn with_max_len(max_len: usize) -> Self {
         let max_small_len: usize = match max_len {
             0 => 0,

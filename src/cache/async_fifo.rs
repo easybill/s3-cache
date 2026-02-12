@@ -8,7 +8,7 @@ use tokio::sync::RwLock;
 use crate::cache::{CacheKey, CachedObject};
 use crate::telemetry;
 
-use super::S3FiFoCache;
+use super::S3FifoCache;
 
 /// Statistics about the cache.
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
@@ -20,12 +20,12 @@ pub struct AsyncS3CacheStatistics {
 }
 
 struct AsyncS3CacheState {
-    cache: S3FiFoCache<CacheKey, CachedObject>,
+    cache: S3FifoCache<CacheKey, CachedObject>,
     /// Current total number of bytes in the cache.
     size: usize,
 }
 
-/// Async wrapper around S3FiFoCache for use with tokio.
+/// Async wrapper around S3FifoCache for use with tokio.
 pub struct AsyncS3Cache {
     state: RwLock<AsyncS3CacheState>,
     // Time-to-live
@@ -38,7 +38,7 @@ pub struct AsyncS3Cache {
 
 impl AsyncS3Cache {
     pub fn new(max_len: usize, max_size: usize, ttl: Duration) -> Self {
-        let cache = S3FiFoCache::with_max_len(max_len);
+        let cache = S3FifoCache::with_max_len(max_len);
         let state = RwLock::new(AsyncS3CacheState { cache, size: 0 });
         let last_stats_report = AtomicU64::new(0);
 

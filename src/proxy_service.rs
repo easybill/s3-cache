@@ -3,7 +3,7 @@ use std::sync::Arc;
 use s3s::dto::*;
 use s3s::{S3, S3Request, S3Response, S3Result, s3_error};
 use s3s_aws::Proxy;
-use tracing::{debug, warn};
+use tracing::{debug, error, warn};
 
 use crate::async_cache::AsyncS3Cache;
 use crate::cache::CacheKey;
@@ -117,7 +117,11 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
             input
         });
 
-        let resp = self.inner.get_object(get_req).await?;
+        let resp = self.inner.get_object(get_req).await.map_err(|err| {
+            error!(bucket = %bucket, key = %key, error = %err, "upstream error on get_object");
+            telemetry::record_upstream_error();
+            err
+        })?;
         let output = resp.output;
 
         let max_cacheable_size = self.max_cacheable_size;
@@ -216,6 +220,7 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
                     key = %key,
                     "object exceeded size limit during buffering, stream consumed"
                 );
+                telemetry::record_buffering_error();
                 Err(s3_error!(
                     InternalError,
                     "Object exceeded size limit during buffering"
@@ -233,7 +238,11 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
         let bucket = req.input.bucket.clone();
         let key = req.input.key.clone();
 
-        let resp = self.inner.put_object(req).await?;
+        let resp = self.inner.put_object(req).await.map_err(|err| {
+            error!(bucket = %bucket, key = %key, error = %err, "upstream error on put_object");
+            telemetry::record_upstream_error();
+            err
+        })?;
 
         if let Some(cache) = &self.cache {
             let count = cache.invalidate_object(&bucket, &key).await;
@@ -255,7 +264,11 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
         let bucket = req.input.bucket.clone();
         let key = req.input.key.clone();
 
-        let resp = self.inner.delete_object(req).await?;
+        let resp = self.inner.delete_object(req).await.map_err(|err| {
+            error!(bucket = %bucket, key = %key, error = %err, "upstream error on delete_object");
+            telemetry::record_upstream_error();
+            err
+        })?;
 
         if let Some(cache) = &self.cache {
             let count = cache.invalidate_object(&bucket, &key).await;
@@ -283,7 +296,11 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
             .map(|o| o.key.clone())
             .collect();
 
-        let resp = self.inner.delete_objects(req).await?;
+        let resp = self.inner.delete_objects(req).await.map_err(|err| {
+            error!(bucket = %bucket, error = %err, "upstream error on delete_objects");
+            telemetry::record_upstream_error();
+            err
+        })?;
 
         if let Some(cache) = &self.cache {
             for key in &keys {
@@ -307,7 +324,11 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
         let dest_bucket = req.input.bucket.clone();
         let dest_key = req.input.key.clone();
 
-        let resp = self.inner.copy_object(req).await?;
+        let resp = self.inner.copy_object(req).await.map_err(|err| {
+            error!(bucket = %dest_bucket, key = %dest_key, error = %err, "upstream error on copy_object");
+            telemetry::record_upstream_error();
+            err
+        })?;
 
         if let Some(cache) = &self.cache {
             let count = cache.invalidate_object(&dest_bucket, &dest_key).await;
@@ -338,7 +359,11 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
         let bucket = req.input.bucket.clone();
         let key = req.input.key.clone();
 
-        let resp = self.inner.complete_multipart_upload(req).await?;
+        let resp = self.inner.complete_multipart_upload(req).await.map_err(|err| {
+            error!(bucket = %bucket, key = %key, error = %err, "upstream error on complete_multipart_upload");
+            telemetry::record_upstream_error();
+            err
+        })?;
 
         if let Some(cache) = &self.cache {
             let count = cache.invalidate_object(&bucket, &key).await;

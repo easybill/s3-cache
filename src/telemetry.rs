@@ -170,6 +170,28 @@ pub(crate) fn record_cache_mismatch() {
     CACHE_MISMATCH.add(1, &[]);
 }
 
+static UPSTREAM_ERROR: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    opentelemetry::global::meter(CARGO_CRATE_NAME)
+        .u64_counter("cache.upstream_error")
+        .with_description("Number of upstream S3 errors")
+        .build()
+});
+
+static BUFFERING_ERROR: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    opentelemetry::global::meter(CARGO_CRATE_NAME)
+        .u64_counter("cache.buffering_error")
+        .with_description("Number of buffering errors (object exceeded size limit during streaming)")
+        .build()
+});
+
+pub(crate) fn record_upstream_error() {
+    UPSTREAM_ERROR.add(1, &[]);
+}
+
+pub(crate) fn record_buffering_error() {
+    BUFFERING_ERROR.add(1, &[]);
+}
+
 pub(crate) fn record_cache_stats(entry_count: usize, size_bytes: usize) {
     CACHE_SIZE_BYTES.record(size_bytes as u64, &[]);
     CACHE_ENTRY_COUNT.record(entry_count as u64, &[]);

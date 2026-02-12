@@ -159,9 +159,11 @@ When `OTEL_GRPC_ENDPOINT_URL` is configured, the following metrics are exported:
 | `cache.hit`          | Counter | Number of cache hits                |
 | `cache.miss`         | Counter | Number of cache misses              |
 | `cache.invalidation` | Counter | Number of cache invalidations       |
-| `cache.mismatch`     | Counter | Mismatches detected in dry-run mode |
-| `cache.size_bytes`   | Gauge   | Current cache size in bytes         |
-| `cache.entry_count`  | Gauge   | Current number of cached entries    |
+| `cache.mismatch`       | Counter | Mismatches detected in dry-run mode                       |
+| `cache.upstream_error` | Counter | Upstream S3 errors                                        |
+| `cache.buffering_error`| Counter | Buffering errors (object exceeded size limit mid-stream)  |
+| `cache.size_bytes`     | Gauge   | Current cache size in bytes                               |
+| `cache.entry_count`    | Gauge   | Current number of cached entries                          |
 
 ## Testing
 

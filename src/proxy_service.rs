@@ -94,6 +94,13 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
                         content_type: cached.content_type.clone(),
                         e_tag: cached.e_tag.clone(),
                         last_modified: cached.last_modified.clone(),
+                        accept_ranges: cached.accept_ranges.clone(),
+                        cache_control: cached.cache_control.clone(),
+                        content_disposition: cached.content_disposition.clone(),
+                        content_encoding: cached.content_encoding.clone(),
+                        content_language: cached.content_language.clone(),
+                        content_range: cached.content_range.clone(),
+                        metadata: cached.metadata.clone(),
                         ..Default::default()
                     };
                     return Ok(S3Response::new(output));
@@ -157,6 +164,13 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
                     output.e_tag.clone(),
                     output.last_modified.clone(),
                     content_length,
+                    output.accept_ranges.clone(),
+                    output.cache_control.clone(),
+                    output.content_disposition.clone(),
+                    output.content_encoding.clone(),
+                    output.content_language.clone(),
+                    output.content_range.clone(),
+                    output.metadata.clone(),
                 );
 
                 // In dryrun mode, compare the fresh body against the cached one

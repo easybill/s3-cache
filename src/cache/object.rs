@@ -7,7 +7,10 @@ use std::time::Instant;
 use mock_instant::global::Instant;
 
 use bytes::Bytes;
-use s3s::dto::{ContentType, ETag, LastModified};
+use s3s::dto::{
+    AcceptRanges, CacheControl, ContentDisposition, ContentEncoding, ContentLanguage, ContentRange,
+    ContentType, ETag, LastModified, Metadata,
+};
 
 /// A cached S3 object with its body and metadata.
 pub struct CachedObject {
@@ -16,6 +19,13 @@ pub struct CachedObject {
     pub e_tag: Option<ETag>,
     pub last_modified: Option<LastModified>,
     pub content_length: i64,
+    pub accept_ranges: Option<AcceptRanges>,
+    pub cache_control: Option<CacheControl>,
+    pub content_disposition: Option<ContentDisposition>,
+    pub content_encoding: Option<ContentEncoding>,
+    pub content_language: Option<ContentLanguage>,
+    pub content_range: Option<ContentRange>,
+    pub metadata: Option<Metadata>,
     inserted_at: Instant,
 }
 
@@ -26,6 +36,13 @@ impl CachedObject {
         e_tag: Option<ETag>,
         last_modified: Option<LastModified>,
         content_length: i64,
+        accept_ranges: Option<AcceptRanges>,
+        cache_control: Option<CacheControl>,
+        content_disposition: Option<ContentDisposition>,
+        content_encoding: Option<ContentEncoding>,
+        content_language: Option<ContentLanguage>,
+        content_range: Option<ContentRange>,
+        metadata: Option<Metadata>,
     ) -> Self {
         Self {
             body,
@@ -33,6 +50,13 @@ impl CachedObject {
             e_tag,
             last_modified,
             content_length,
+            accept_ranges,
+            cache_control,
+            content_disposition,
+            content_encoding,
+            content_language,
+            content_range,
+            metadata,
             inserted_at: Instant::now(),
         }
     }
@@ -54,6 +78,13 @@ impl Clone for CachedObject {
             e_tag: self.e_tag.clone(),
             last_modified: self.last_modified.clone(),
             content_length: self.content_length,
+            accept_ranges: self.accept_ranges.clone(),
+            cache_control: self.cache_control.clone(),
+            content_disposition: self.content_disposition.clone(),
+            content_encoding: self.content_encoding.clone(),
+            content_language: self.content_language.clone(),
+            content_range: self.content_range.clone(),
+            metadata: self.metadata.clone(),
             inserted_at: self.inserted_at,
         }
     }

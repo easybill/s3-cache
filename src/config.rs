@@ -81,7 +81,7 @@ impl Config {
             cache_ttl_seconds: vars
                 .get("CACHE_TTL_SECONDS")
                 .map(|s| s.parse().expect("invalid CACHE_TTL_SECONDS"))
-                .unwrap_or(300),
+                .unwrap_or(86_400),
             worker_threads: vars
                 .get("WORKER_THREADS")
                 .map(|s| s.parse().expect("invalid WORKER_THREADS"))

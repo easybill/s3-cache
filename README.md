@@ -85,7 +85,7 @@ All configuration is done via environment variables:
 | `CACHE_MAX_ENTRIES`           | `10000`              | Max cached objects                    |
 | `CACHE_MAX_SIZE_BYTES`        | `1073741824` (1 GiB) | Max cache size                        |
 | `CACHE_MAX_OBJECT_SIZE_BYTES` | `10485760` (10 MiB)  | Skip caching above this               |
-| `CACHE_TTL_SECONDS`           | `300`                | TTL for cached entries                |
+| `CACHE_TTL_SECONDS`           | `86400` (24h)        | TTL for cached entries                |
 | `WORKER_THREADS`              | `4`                  | Tokio worker threads                  |
 | `OTEL_GRPC_ENDPOINT_URL`      | *(optional)*         | OpenTelemetry collector               |
 

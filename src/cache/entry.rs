@@ -2,25 +2,18 @@ use std::sync::atomic::{AtomicU8, Ordering};
 
 pub struct ValueEntry<V> {
     value: V,
-    lives: AtomicU8,
-    is_promoted: bool,
+    counter: AtomicU8,
 }
 
 impl<V> ValueEntry<V> {
-    const MAX_LIVES: u8 = 3;
+    const MAX_COUNT: u8 = 3;
 
     #[inline]
     pub fn new(value: V) -> Self {
         Self {
             value,
-            lives: AtomicU8::new(0),
-            is_promoted: false,
+            counter: AtomicU8::new(0),
         }
-    }
-
-    #[inline]
-    pub fn promote(&mut self) {
-        self.is_promoted = true;
     }
 
     #[inline]
@@ -39,26 +32,21 @@ impl<V> ValueEntry<V> {
     }
 
     #[inline]
-    pub(crate) fn lives(&self) -> u8 {
-        self.lives.load(Ordering::Relaxed)
+    pub(crate) fn counter(&self) -> u8 {
+        self.counter.load(Ordering::Relaxed)
     }
 
     #[inline]
-    pub(crate) fn add_live(&self) {
-        self.lives
+    pub(crate) fn increment_counter(&self) {
+        self.counter
             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |f| {
-                Some(std::cmp::min(f + 1, Self::MAX_LIVES))
+                Some(std::cmp::min(f + 1, Self::MAX_COUNT))
             })
             .unwrap();
     }
 
     #[inline]
-    pub(crate) fn remove_live(&self) {
-        self.lives.fetch_sub(1, Ordering::AcqRel);
-    }
-
-    #[inline]
-    pub fn is_promoted(&self) -> bool {
-        self.is_promoted
+    pub(crate) fn decrement_counter(&self) {
+        self.counter.fetch_sub(1, Ordering::AcqRel);
     }
 }

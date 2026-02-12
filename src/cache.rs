@@ -86,7 +86,7 @@ impl<K: Clone + Eq + Hash, V> S3FifoCache<K, V> {
     pub fn insert(&mut self, key: K, value: V) -> Option<V> {
         if let Some(entry) = self.values.get_mut(&key) {
             let old_value = std::mem::replace(entry.value_mut(), value);
-            entry.add_live();
+            entry.increment_counter();
 
             return Some(old_value);
         }
@@ -96,7 +96,6 @@ impl<K: Clone + Eq + Hash, V> S3FifoCache<K, V> {
         // push_force allows the queue to temporarily exceed its target size.
         // The eviction loop below trims the cache back to capacity.
         if self.ghost.contains(&key) {
-            entry.promote();
             self.ghost.remove(&key);
             self.main.push_force(key.clone());
         } else {
@@ -121,7 +120,7 @@ impl<K: Clone + Eq + Hash, V> S3FifoCache<K, V> {
         Q: Hash + Eq + ?Sized,
     {
         self.values.get(key).map(|entry| {
-            entry.add_live();
+            entry.increment_counter();
             entry.value()
         })
     }
@@ -190,8 +189,8 @@ impl<K: Clone + Eq + Hash, V> S3FifoCache<K, V> {
                 continue; // skip tombstone
             };
 
-            if entry.lives() > 0 {
-                entry.remove_live();
+            if entry.counter() > 0 {
+                entry.decrement_counter();
                 // Promote to main. push_force is safe: it never drops items.
                 // Main may temporarily exceed its target; the eviction loop
                 // in insert()/evict() drains it.
@@ -216,8 +215,8 @@ impl<K: Clone + Eq + Hash, V> S3FifoCache<K, V> {
                 continue; // skip tombstone
             };
 
-            if entry.lives() > 0 {
-                entry.remove_live();
+            if entry.counter() > 0 {
+                entry.decrement_counter();
                 // FIFO-Reinsertion: re-insert at head. push_force is safe here
                 // because we just popped from the same queue, so the net queue
                 // length doesn't increase.

@@ -30,15 +30,17 @@ impl<K> FiFoQueue<K> {
     }
 
     #[inline]
+    #[allow(dead_code)]
     pub fn is_full(&self) -> bool {
         self.len() >= self.max_len()
     }
 
     #[inline]
+    #[allow(dead_code)]
     pub fn push(&mut self, key: K) -> Option<K> {
         let evicted = if self.is_full() { self.pop() } else { None };
 
-        self.queue.push_front(key);
+        self.push_force(key);
 
         evicted
     }

@@ -269,6 +269,7 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
     ) -> S3Result<S3Response<AbortMultipartUploadOutput>> {
         self.inner.abort_multipart_upload(req).await
     }
+
     async fn complete_multipart_upload(
         &self,
         req: S3Request<CompleteMultipartUploadInput>,
@@ -287,78 +288,91 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
 
         Ok(resp)
     }
+
     async fn create_bucket(
         &self,
         req: S3Request<CreateBucketInput>,
     ) -> S3Result<S3Response<CreateBucketOutput>> {
         self.inner.create_bucket(req).await
     }
+
     async fn create_multipart_upload(
         &self,
         req: S3Request<CreateMultipartUploadInput>,
     ) -> S3Result<S3Response<CreateMultipartUploadOutput>> {
         self.inner.create_multipart_upload(req).await
     }
+
     async fn delete_bucket(
         &self,
         req: S3Request<DeleteBucketInput>,
     ) -> S3Result<S3Response<DeleteBucketOutput>> {
         self.inner.delete_bucket(req).await
     }
+
     async fn get_bucket_location(
         &self,
         req: S3Request<GetBucketLocationInput>,
     ) -> S3Result<S3Response<GetBucketLocationOutput>> {
         self.inner.get_bucket_location(req).await
     }
+
     async fn head_bucket(
         &self,
         req: S3Request<HeadBucketInput>,
     ) -> S3Result<S3Response<HeadBucketOutput>> {
         self.inner.head_bucket(req).await
     }
+
     async fn head_object(
         &self,
         req: S3Request<HeadObjectInput>,
     ) -> S3Result<S3Response<HeadObjectOutput>> {
         self.inner.head_object(req).await
     }
+
     async fn list_buckets(
         &self,
         req: S3Request<ListBucketsInput>,
     ) -> S3Result<S3Response<ListBucketsOutput>> {
         self.inner.list_buckets(req).await
     }
+
     async fn list_multipart_uploads(
         &self,
         req: S3Request<ListMultipartUploadsInput>,
     ) -> S3Result<S3Response<ListMultipartUploadsOutput>> {
         self.inner.list_multipart_uploads(req).await
     }
+
     async fn list_objects(
         &self,
         req: S3Request<ListObjectsInput>,
     ) -> S3Result<S3Response<ListObjectsOutput>> {
         self.inner.list_objects(req).await
     }
+
     async fn list_objects_v2(
         &self,
         req: S3Request<ListObjectsV2Input>,
     ) -> S3Result<S3Response<ListObjectsV2Output>> {
         self.inner.list_objects_v2(req).await
     }
+
     async fn list_parts(
         &self,
         req: S3Request<ListPartsInput>,
     ) -> S3Result<S3Response<ListPartsOutput>> {
         self.inner.list_parts(req).await
     }
+
     async fn upload_part(
         &self,
         req: S3Request<UploadPartInput>,
     ) -> S3Result<S3Response<UploadPartOutput>> {
         self.inner.upload_part(req).await
     }
+
     async fn upload_part_copy(
         &self,
         req: S3Request<UploadPartCopyInput>,

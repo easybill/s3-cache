@@ -6,65 +6,31 @@ A high-performance, transparent S3 caching proxy that sits between clients and S
 
 S3 Cache is a caching layer for S3-compatible object storage (e.g. MinIO) that:
 
-- **Transparently caches GET requests** — Clients connect to the proxy as if it were S3 itself
-- **Reduces backend load** — Frequently accessed objects are served from memory without hitting S3
-- **Intelligently evicts entries** — Uses the S3-FIFO algorithm for optimal cache hit rates
-- **Invalidates on writes** — Automatically invalidates cache entries when objects are modified or deleted
-- **Supports range requests** — Caches partial object requests separately from full objects
-- **Observable** — Exports OpenTelemetry metrics (cache hits, misses, evictions, size)
-
-## How It Works
-
-```plain
-Client ──► S3 Cache Proxy ──► S3 Cluster
-              │
-         S3-FIFO Cache
-          (in-memory)
-```
+- **Transparently caches GET requests**: Clients connect to the proxy as if it were S3 itself
+- **Reduces backend load**: Frequently accessed objects are served from memory without hitting S3
+- **Intelligently evicts entries**: Uses the S3-FIFO algorithm for optimal cache hit rates
+- **Invalidates on writes**: Automatically invalidates cache entries when objects are modified or deleted
+- **Supports range requests**: Caches partial object requests separately from full objects
+- **Observable**: Exports OpenTelemetry metrics (cache hits, misses, evictions, size)
 
 ### Request Flow
 
-1. **Client sends S3 request** → The proxy receives it via the `s3s` crate (AWS Sig V4 authentication)
-2. **Cache lookup** → For `GetObject`, check if `(bucket, key, range)` exists in cache
-   - **Cache hit** → Return cached response immediately (metrics: `cache.hit`)
-   - **Cache miss** → Forward request to upstream S3 (metrics: `cache.miss`)
-3. **Buffer response** → Stream body from S3, buffer up to `CACHE_MAX_OBJECT_SIZE_BYTES`
-4. **Store in cache** → Insert into S3-FIFO cache with TTL
-5. **Return to client** → Stream the buffered response back
+1. **Client sends S3 request**: The proxy receives it via the `s3s` crate (AWS Sig V4 authentication)
+2. **Cache lookup**: For `GetObject`, check if `(bucket, key, range)` exists in cache
+   - **Cache hit**: Return cached response immediately (metrics: `cache.hit`)
+   - **Cache miss**: Forward request to upstream S3 (metrics: `cache.miss`)
+3. **Buffer response**: Stream body from S3, buffer up to `CACHE_MAX_OBJECT_SIZE_BYTES`
+4. **Store in cache**: Insert into S3-FIFO cache with TTL
+5. **Return to client**: Stream the buffered response back
 
 ### Write-Through Invalidation
 
 When clients modify objects, the proxy invalidates all related cache entries:
 
-- `PUT /bucket/key` → Invalidate all entries for `(bucket, key, *)` (all ranges)
-- `DELETE /bucket/key` → Invalidate all entries for `(bucket, key, *)`
-- `DELETE /?delete` → Invalidate all listed objects
-- `PUT /bucket/key?x-amz-copy-source=...` → Invalidate destination key
-
-### S3-FIFO Eviction Algorithm
-
-The cache uses a three-tier eviction strategy optimized for object storage workloads:
-
-1. **Small FIFO (10% capacity)** — New objects enter here
-2. **Main FIFO (90% capacity)** — Objects accessed more than once are promoted
-3. **Ghost list** — Tracks recently evicted keys to optimize re-insertion
-
-This provides better hit rates than LRU for workloads with a mix of one-hit-wonders and frequently accessed objects.
-
-### Dry-Run Verification Mode
-
-When `CACHE_DRYRUN=true`, the cache is fully operational (populated, checked, evicted) but `GetObject` always returns the fresh upstream response. On every cache hit, the cached object is compared against the freshly fetched one. If they differ, a warning event is emitted with the cache key fields (`bucket`, `key`, `range`, `version_id`) and a `cache.mismatch` metric is incremented. This allows deploying the cache in production to verify correctness before switching to serving cached responses.
-
-## Features
-
-- ✅ S3 protocol compatibility via `s3s` crate
-- ✅ In-memory caching with configurable size and TTL
-- ✅ Range request support (caches partial reads separately)
-- ✅ Write-through invalidation
-- ✅ OpenTelemetry metrics and logging
-- ✅ AWS Signature V4 authentication
-- ✅ Graceful shutdown
-- ✅ Configurable via environment variables
+- `PUT /bucket/key`: Invalidate all entries for `(bucket, key, *)` (all ranges)
+- `DELETE /bucket/key`: Invalidate all entries for `(bucket, key, *)`
+- `DELETE /?delete`: Invalidate all listed objects
+- `PUT /bucket/key?x-amz-copy-source=...`: Invalidate destination key
 
 ## Configuration
 
@@ -90,11 +56,6 @@ All configuration is done via environment variables:
 | `OTEL_GRPC_ENDPOINT_URL`      | *(optional)*         | OpenTelemetry collector               |
 
 ## Building
-
-### Prerequisites
-
-- Rust 1.93+ (Edition 2024)
-- Cargo
 
 ### Build from source
 
@@ -150,20 +111,24 @@ aws s3 ls s3://my-bucket --endpoint-url http://localhost:8080
 aws s3 cp s3://my-bucket/file.txt . --endpoint-url http://localhost:8080
 ```
 
+## Dry-Run Verification Mode
+
+When `CACHE_DRYRUN=true`, the cache is fully operational (populated, checked, evicted) but `GetObject` always returns the fresh upstream response. On every cache hit, the cached object is compared against the freshly fetched one. If they differ, a warning event is emitted with the cache key fields (`bucket`, `key`, `range`, `version_id`) and a `cache.mismatch` metric is incremented. This allows deploying the cache in production to verify correctness before switching to serving cached responses.
+
 ## Metrics
 
 When `OTEL_GRPC_ENDPOINT_URL` is configured, the following metrics are exported:
 
-| Metric               | Type    | Description                         |
-| -------------------- | ------- | ----------------------------------- |
-| `cache.hit`          | Counter | Number of cache hits                |
-| `cache.miss`         | Counter | Number of cache misses              |
-| `cache.invalidation` | Counter | Number of cache invalidations       |
-| `cache.mismatch`       | Counter | Mismatches detected in dry-run mode                       |
-| `cache.upstream_error` | Counter | Upstream S3 errors                                        |
-| `cache.buffering_error`| Counter | Buffering errors (object exceeded size limit mid-stream)  |
-| `cache.size_bytes`     | Gauge   | Current cache size in bytes                               |
-| `cache.entry_count`    | Gauge   | Current number of cached entries                          |
+| Metric                  | Type    | Description                                              |
+| ----------------------- | ------- | -------------------------------------------------------- |
+| `cache.hit`             | Counter | Number of cache hits                                     |
+| `cache.miss`            | Counter | Number of cache misses                                   |
+| `cache.invalidation`    | Counter | Number of cache invalidations                            |
+| `cache.mismatch`        | Counter | Mismatches detected in dry-run mode                      |
+| `cache.upstream_error`  | Counter | Upstream S3 errors                                       |
+| `cache.buffering_error` | Counter | Buffering errors (object exceeded size limit mid-stream) |
+| `cache.size_bytes`      | Gauge   | Current cache size in bytes                              |
+| `cache.entry_count`     | Gauge   | Current number of cached entries                         |
 
 ## Testing
 
@@ -253,37 +218,3 @@ cargo run --release --bin s3_cache_sim --features sim -- \
   --latency-ms 50 --throughput-bytes-per-sec 10000000 \
   --num-requests 10000
 ```
-
-## Architecture
-
-### Project Structure
-
-```plain
-src/
-├── bin/s3_cache.rs    # Binary entrypoint
-├── lib.rs                # Application setup and server
-├── config.rs             # Environment variable parsing
-├── error.rs              # Error types
-├── telemetry.rs          # OpenTelemetry setup
-├── cache.rs              # S3-FIFO cache implementation
-├── cache_key.rs          # Cache key type
-├── cache_entry.rs        # Cache entry type
-├── proxy_service.rs      # S3 trait implementation
-└── auth.rs               # Authentication setup
-```
-
-### Dependencies
-
-- **s3s 0.13.0-alpha.3** — S3 protocol implementation
-- **s3s-aws 0.12** — AWS SDK integration for upstream forwarding
-- **aws-sdk-s3** — S3 client
-- **hyper-util** — HTTP server
-- **tokio** — Async runtime
-- **opentelemetry** — Metrics and logging
-
-## Limitations
-
-- **Single-node only** — Cache is not distributed across multiple proxy instances
-- **No persistence** — Cache is in-memory and lost on restart
-- **Large objects** — Objects exceeding `CACHE_MAX_OBJECT_SIZE_BYTES` return an error (stream is already consumed)
-- **Limited operations** — Only caches `GetObject`; all other operations are proxied without caching

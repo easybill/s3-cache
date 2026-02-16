@@ -11,7 +11,6 @@ use crate::cache::CachedObject;
 use crate::telemetry;
 
 /// Generic caching proxy that wraps any S3 implementation
-#[derive(Clone)]
 pub struct CachingProxy<T = Proxy> {
     inner: T,
     cache: Option<Arc<AsyncS3Cache>>,
@@ -20,7 +19,7 @@ pub struct CachingProxy<T = Proxy> {
     /// returns the fresh upstream response. On cache hit the cached body is
     /// compared against the fresh body and a `cache.mismatch` event is emitted
     /// when they differ.
-    dryrun: bool,
+    dry_run: bool,
 }
 
 impl<T> CachingProxy<T> {
@@ -28,13 +27,13 @@ impl<T> CachingProxy<T> {
         inner: T,
         cache: Option<Arc<AsyncS3Cache>>,
         max_cacheable_size: usize,
-        dryrun: bool,
+        dry_run: bool,
     ) -> Self {
         Self {
             inner,
             cache,
             max_cacheable_size,
-            dryrun,
+            dry_run,
         }
     }
 }
@@ -45,9 +44,9 @@ impl CachingProxy<Proxy> {
         inner: Proxy,
         cache: Option<Arc<AsyncS3Cache>>,
         max_cacheable_size: usize,
-        dryrun: bool,
+        dry_run: bool,
     ) -> Self {
-        Self::new(inner, cache, max_cacheable_size, dryrun)
+        Self::new(inner, cache, max_cacheable_size, dry_run)
     }
 }
 
@@ -65,8 +64,6 @@ pub fn range_to_string(range: &Range) -> String {
 
 #[async_trait::async_trait]
 impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
-    // === Cached operation ===
-
     async fn get_object(
         &self,
         req: S3Request<GetObjectInput>,
@@ -86,7 +83,7 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
                 telemetry::record_cache_hit();
                 cache.report_stats().await;
 
-                if !self.dryrun {
+                if !self.dry_run {
                     let body = StreamingBlob::from(s3s::Body::from(cached.body.clone()));
                     let output = GetObjectOutput {
                         body: Some(body),
@@ -174,7 +171,7 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
                 );
 
                 // In dryrun mode, compare the fresh body against the cached one
-                if self.dryrun {
+                if self.dry_run {
                     if let Some(cached_hit) = &cached_hit {
                         if cached_hit.body != bytes
                             || cached_hit.content_type != output.content_type
@@ -242,8 +239,6 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
             }
         }
     }
-
-    // === Write-through invalidation ===
 
     async fn put_object(
         &self,
@@ -356,8 +351,6 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
 
         Ok(resp)
     }
-
-    // === Delegated operations ===
 
     async fn abort_multipart_upload(
         &self,

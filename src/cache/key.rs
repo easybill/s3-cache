@@ -1,4 +1,4 @@
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 
 /// Cache key for S3 objects: (bucket, key, range_str, version_id).
 /// Range is stored as a string representation to be hashable.

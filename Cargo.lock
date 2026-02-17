@@ -1441,6 +1441,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "hyperloglockless"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ae1bec24f6def5dee99af44efa0a0d6515373c308ac45e2018ca0aaf128d4142"
+dependencies = [
+ "foldhash",
+ "libm",
+ "rand",
+ "siphasher",
+]
+
+[[package]]
 name = "icu_collections"
 version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2259,6 +2271,7 @@ dependencies = [
  "http 1.4.0",
  "hyper 1.8.1",
  "hyper-util",
+ "hyperloglockless",
  "mock_instant",
  "opentelemetry",
  "opentelemetry-appender-tracing",
@@ -2552,6 +2565,12 @@ name = "simdutf8"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3a9fe34e3e7a50316060351f37187a3f546bce95496156754b601a5fa71b76e"
+
+[[package]]
+name = "siphasher"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b2aa850e253778c88a04c3d7323b043aeda9d3e30d5971937c1855769763678e"
 
 [[package]]
 name = "slab"

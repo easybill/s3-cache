@@ -196,3 +196,22 @@ pub(crate) fn record_cache_stats(entry_count: usize, size_bytes: usize) {
     CACHE_SIZE_BYTES.record(size_bytes as u64, &[]);
     CACHE_ENTRY_COUNT.record(entry_count as u64, &[]);
 }
+
+static CACHE_ESTIMATED_UNIQUE_KEYS: LazyLock<Gauge<u64>> = LazyLock::new(|| {
+    opentelemetry::global::meter(CARGO_CRATE_NAME)
+        .u64_gauge("cache.estimated_unique_keys")
+        .with_description("Estimated number of unique keys accessed (using HyperLogLog)")
+        .build()
+});
+
+static CACHE_ESTIMATED_UNIQUE_BYTES: LazyLock<Gauge<u64>> = LazyLock::new(|| {
+    opentelemetry::global::meter(CARGO_CRATE_NAME)
+        .u64_gauge("cache.estimated_unique_bytes")
+        .with_description("Estimated total bytes for unique keys accessed")
+        .build()
+});
+
+pub(crate) fn record_counter_estimates(unique_count: usize, unique_bytes: usize) {
+    CACHE_ESTIMATED_UNIQUE_KEYS.record(unique_count as u64, &[]);
+    CACHE_ESTIMATED_UNIQUE_BYTES.record(unique_bytes as u64, &[]);
+}

@@ -10,11 +10,16 @@ use crate::cache::CacheKey;
 use crate::cache::CachedObject;
 use crate::telemetry;
 
+use self::counter::CachingCounter;
+
+mod counter;
+
 /// Generic caching proxy that wraps any S3 implementation
 pub struct CachingProxy<T = Proxy> {
     inner: T,
     cache: Option<Arc<AsyncS3Cache>>,
     max_cacheable_size: usize,
+    counter: CachingCounter,
     /// Dry-run mode: the cache is populated and checked, but get_object always
     /// returns the fresh upstream response. On cache hit the cached body is
     /// compared against the fresh body and a `cache.mismatch` event is emitted
@@ -29,12 +34,22 @@ impl<T> CachingProxy<T> {
         max_cacheable_size: usize,
         dry_run: bool,
     ) -> Self {
+        let counter = CachingCounter::default();
         Self {
             inner,
             cache,
             max_cacheable_size,
+            counter,
             dry_run,
         }
+    }
+
+    pub fn estimated_unique_count(&self) -> usize {
+        self.counter.estimated_count()
+    }
+
+    pub fn estimated_unique_bytes(&self) -> usize {
+        self.counter.estimated_bytes()
     }
 }
 
@@ -100,6 +115,13 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
                         metadata: cached.metadata.clone(),
                         ..Default::default()
                     };
+
+                    self.counter.insert(&key, cached.content_length as usize);
+                    telemetry::record_counter_estimates(
+                        self.counter.estimated_count(),
+                        self.counter.estimated_bytes(),
+                    );
+
                     return Ok(S3Response::new(output));
                 }
 
@@ -129,6 +151,13 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
         let output = resp.output;
 
         let max_cacheable_size = self.max_cacheable_size;
+
+        self.counter
+            .insert(&key, output.content_length.unwrap_or(0) as usize);
+        telemetry::record_counter_estimates(
+            self.counter.estimated_count(),
+            self.counter.estimated_bytes(),
+        );
 
         // Check if object is too large to cache based on Content-Length
         if let Some(content_length) = output.content_length {

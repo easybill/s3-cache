@@ -1,6 +1,7 @@
 mod simulated_backend;
 mod workload;
 
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -142,8 +143,8 @@ async fn main() {
         .await;
 
     // Build cache + proxy (or direct backend if --no-cache)
-    let service: Arc<dyn S3 + Send + Sync> = if args.no_cache {
-        Arc::new(backend.clone())
+    let proxy: Option<Arc<CachingProxy<_>>> = if args.no_cache {
+        None
     } else {
         let cache = Arc::new(AsyncS3Cache::new(
             args.cache_max_entries,
@@ -151,12 +152,18 @@ async fn main() {
             Duration::from_secs(args.cache_ttl_secs),
             args.cache_shards,
         ));
-        Arc::new(CachingProxy::new(
+        Some(Arc::new(CachingProxy::new(
             backend.clone(),
             Some(cache),
             args.max_cacheable_size,
             false,
-        ))
+        )))
+    };
+
+    let service: Arc<dyn S3 + Send + Sync> = if let Some(ref p) = proxy {
+        p.clone()
+    } else {
+        Arc::new(backend.clone())
     };
 
     // Generate workload
@@ -298,6 +305,49 @@ async fn main() {
     eprintln!("Latency p50:     {:.2}ms", p50.as_secs_f64() * 1000.0);
     eprintln!("Latency p99:     {:.2}ms", p99.as_secs_f64() * 1000.0);
     eprintln!("Latency mean:    {:.2}ms", mean.as_secs_f64() * 1000.0);
+
+    // Calculate actual unique objects and bytes from workload
+    let unique_indices: HashSet<usize> = workload.iter().copied().collect();
+    let actual_unique_count = unique_indices.len();
+
+    let mut actual_total_bytes: usize = 0;
+    for idx in &unique_indices {
+        let key = index_to_key(*idx);
+        if let Some(size) = backend.get_object_size("sim", &key).await {
+            actual_total_bytes += size;
+        }
+    }
+
+    // Print cardinality estimation comparison if using proxy
+    if let Some(ref proxy) = proxy {
+        let estimated_count = proxy.estimated_unique_count();
+        let estimated_bytes = proxy.estimated_unique_bytes();
+
+        eprintln!();
+        eprintln!("=== Cardinality Estimation (HyperLogLog) ===");
+        eprintln!("Actual unique objects:     {actual_unique_count}");
+        eprintln!("Estimated unique objects:  {estimated_count}");
+
+        let count_error = if actual_unique_count > 0 {
+            let diff = (estimated_count as isize - actual_unique_count as isize).abs();
+            (diff as f64 / actual_unique_count as f64) * 100.0
+        } else {
+            0.0
+        };
+        eprintln!("Count error:               {count_error:.2}%");
+
+        eprintln!();
+        eprintln!("Actual total bytes:        {actual_total_bytes}");
+        eprintln!("Estimated total bytes:     {estimated_bytes}");
+
+        let bytes_error = if actual_total_bytes > 0 {
+            let diff = (estimated_bytes as isize - actual_total_bytes as isize).abs();
+            (diff as f64 / actual_total_bytes as f64) * 100.0
+        } else {
+            0.0
+        };
+        eprintln!("Bytes error:               {bytes_error:.2}%");
+    }
 }
 
 fn percentile(sorted: &[Duration], pct: f64) -> Duration {

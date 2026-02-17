@@ -60,6 +60,16 @@ impl SimulatedBackend {
         self.get_count.load(Ordering::Relaxed)
     }
 
+    /// Get the size of an object by key, or default size for one-hit-wonders
+    pub async fn get_object_size(&self, bucket: &str, key: &str) -> Option<usize> {
+        let storage = self.storage.read().await;
+        if let Some(body) = storage.get(bucket).and_then(|b| b.get(key)) {
+            Some(body.len())
+        } else {
+            self.default_object_size
+        }
+    }
+
     async fn simulate_latency(&self, body_len: usize) {
         let transfer_delay = if self.throughput_bps > 0 {
             Duration::from_secs_f64(body_len as f64 / self.throughput_bps as f64)

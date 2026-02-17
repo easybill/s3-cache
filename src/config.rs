@@ -21,6 +21,7 @@ pub struct Config {
     pub cache_ttl_seconds: usize,
     pub worker_threads: usize,
     pub otel_grpc_endpoint_url: Option<String>,
+    pub prometheus_textfile_dir: Option<String>,
 }
 
 impl Config {
@@ -87,6 +88,7 @@ impl Config {
                 .map(|s| s.parse().expect("invalid WORKER_THREADS"))
                 .unwrap_or(4),
             otel_grpc_endpoint_url: vars.get("OTEL_GRPC_ENDPOINT_URL").cloned(),
+            prometheus_textfile_dir: vars.get("PROMETHEUS_TEXTFILE_DIR").cloned(),
         };
 
         config.validate();
@@ -126,7 +128,7 @@ impl Display for Config {
             "Config{{ listen_addr: {}, upstream_endpoint: {}, upstream_region: {}, \
              cache_max_entries: {}, cache_max_size_bytes: {}, cache_ttl_seconds: {}, \
              max_cacheable_object_size: {}, otel_grpc_endpoint_url: {:?}, cache_shards: {}, \
-             cache_dryrun: {}, worker_threads: {} }}",
+             cache_dryrun: {}, worker_threads: {}, prometheus_textfile_dir: {:?} }}",
             self.listen_addr,
             self.upstream_endpoint,
             self.upstream_region,
@@ -138,6 +140,7 @@ impl Display for Config {
             self.cache_shards,
             self.cache_dryrun,
             self.worker_threads,
+            self.prometheus_textfile_dir,
         )
     }
 }

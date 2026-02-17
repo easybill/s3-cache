@@ -505,3 +505,124 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
         self.inner.upload_part_copy(req).await
     }
 }
+
+/// Wrapper around Arc<CachingProxy> that implements S3.
+/// This allows sharing the CachingProxy between the S3 service and metrics writer.
+pub struct SharedCachingProxy<T>(Arc<CachingProxy<T>>);
+
+impl<T> SharedCachingProxy<T> {
+    pub fn new(proxy: CachingProxy<T>) -> Self {
+        Self(Arc::new(proxy))
+    }
+
+    pub fn clone_arc(&self) -> Arc<CachingProxy<T>> {
+        self.0.clone()
+    }
+}
+
+impl<T> Clone for SharedCachingProxy<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+#[async_trait::async_trait]
+impl<T: S3 + Send + Sync> S3 for SharedCachingProxy<T> {
+    async fn get_object(
+        &self,
+        req: S3Request<GetObjectInput>,
+    ) -> S3Result<S3Response<GetObjectOutput>> {
+        self.0.get_object(req).await
+    }
+
+    async fn put_object(
+        &self,
+        req: S3Request<PutObjectInput>,
+    ) -> S3Result<S3Response<PutObjectOutput>> {
+        self.0.put_object(req).await
+    }
+
+    async fn delete_object(
+        &self,
+        req: S3Request<DeleteObjectInput>,
+    ) -> S3Result<S3Response<DeleteObjectOutput>> {
+        self.0.delete_object(req).await
+    }
+
+    async fn delete_objects(
+        &self,
+        req: S3Request<DeleteObjectsInput>,
+    ) -> S3Result<S3Response<DeleteObjectsOutput>> {
+        self.0.delete_objects(req).await
+    }
+
+    async fn copy_object(
+        &self,
+        req: S3Request<CopyObjectInput>,
+    ) -> S3Result<S3Response<CopyObjectOutput>> {
+        self.0.copy_object(req).await
+    }
+
+    async fn head_object(
+        &self,
+        req: S3Request<HeadObjectInput>,
+    ) -> S3Result<S3Response<HeadObjectOutput>> {
+        self.0.head_object(req).await
+    }
+
+    async fn create_multipart_upload(
+        &self,
+        req: S3Request<CreateMultipartUploadInput>,
+    ) -> S3Result<S3Response<CreateMultipartUploadOutput>> {
+        self.0.create_multipart_upload(req).await
+    }
+
+    async fn complete_multipart_upload(
+        &self,
+        req: S3Request<CompleteMultipartUploadInput>,
+    ) -> S3Result<S3Response<CompleteMultipartUploadOutput>> {
+        self.0.complete_multipart_upload(req).await
+    }
+
+    async fn abort_multipart_upload(
+        &self,
+        req: S3Request<AbortMultipartUploadInput>,
+    ) -> S3Result<S3Response<AbortMultipartUploadOutput>> {
+        self.0.abort_multipart_upload(req).await
+    }
+
+    async fn list_objects(
+        &self,
+        req: S3Request<ListObjectsInput>,
+    ) -> S3Result<S3Response<ListObjectsOutput>> {
+        self.0.list_objects(req).await
+    }
+
+    async fn list_objects_v2(
+        &self,
+        req: S3Request<ListObjectsV2Input>,
+    ) -> S3Result<S3Response<ListObjectsV2Output>> {
+        self.0.list_objects_v2(req).await
+    }
+
+    async fn list_parts(
+        &self,
+        req: S3Request<ListPartsInput>,
+    ) -> S3Result<S3Response<ListPartsOutput>> {
+        self.0.list_parts(req).await
+    }
+
+    async fn upload_part(
+        &self,
+        req: S3Request<UploadPartInput>,
+    ) -> S3Result<S3Response<UploadPartOutput>> {
+        self.0.upload_part(req).await
+    }
+
+    async fn upload_part_copy(
+        &self,
+        req: S3Request<UploadPartCopyInput>,
+    ) -> S3Result<S3Response<UploadPartCopyOutput>> {
+        self.0.upload_part_copy(req).await
+    }
+}

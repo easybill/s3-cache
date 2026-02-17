@@ -51,6 +51,7 @@ opentelemetry-stdout = { version = "0.31", default-features = false, features = 
     "logs",
     "metrics",
 ] }
+prometheus = "0.13"
 s3s = "0.13.0-alpha.3"
 s3s-aws = "0.13.0-alpha.3"
 tokio = { version = "1", features = [

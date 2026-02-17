@@ -14,13 +14,14 @@ pub use self::async_cache::AsyncS3Cache;
 pub use self::cache::{CacheKey, CachedObject, S3FifoCache};
 pub use self::config::Config;
 pub use self::error::ApplicationError;
-pub use self::proxy_service::{CachingProxy, range_to_string};
+pub use self::proxy_service::{CachingProxy, SharedCachingProxy, range_to_string};
 
 mod async_cache;
 mod auth;
 mod cache;
 mod config;
 mod error;
+mod metrics_writer;
 pub mod proxy_service;
 mod telemetry;
 
@@ -69,19 +70,42 @@ pub async fn start_app(config: Config) -> Result<()> {
         ))
     });
 
-    // Build caching proxy
-    let caching_proxy = proxy_service::CachingProxy::from_aws_proxy(
-        proxy,
-        cache,
-        config.cache_max_object_size_bytes,
-        config.cache_dryrun,
+    // Build caching proxy (wrapped for sharing with metrics writer)
+    let caching_proxy = proxy_service::SharedCachingProxy::new(
+        proxy_service::CachingProxy::from_aws_proxy(
+            proxy,
+            cache,
+            config.cache_max_object_size_bytes,
+            config.cache_dryrun,
+        ),
     );
 
     // Build S3 service with auth
     let service = {
-        let mut b = S3ServiceBuilder::new(caching_proxy);
+        let mut b = S3ServiceBuilder::new(caching_proxy.clone());
         b.set_auth(auth::create_auth(&config));
         b.build()
+    };
+
+    // Start Prometheus metrics writer if configured
+    let metrics_writer_handle = if let Some(textfile_dir) = config.prometheus_textfile_dir.clone()
+    {
+        info!(
+            "Starting Prometheus textfile writer to {}/s3_cache.prom",
+            textfile_dir
+        );
+        Some(tokio::spawn({
+            let proxy_arc = caching_proxy.clone_arc();
+            async move {
+                if let Err(e) = metrics_writer::start_metrics_writer(textfile_dir, proxy_arc).await
+                {
+                    error!("Metrics writer failed: {:?}", e);
+                }
+            }
+        }))
+    } else {
+        info!("Prometheus textfile writer disabled (PROMETHEUS_TEXTFILE_DIR not set)");
+        None
     };
 
     // Start hyper server
@@ -126,6 +150,12 @@ pub async fn start_app(config: Config) -> Result<()> {
         () = tokio::time::sleep(Duration::from_secs(10)) => {
             info!("Graceful shutdown timed out after 10s, aborting");
         }
+    }
+
+    // Abort metrics writer background task
+    if let Some(handle) = metrics_writer_handle {
+        handle.abort();
+        info!("Metrics writer task aborted");
     }
 
     telemetry::shutdown_metrics(metrics_provider);

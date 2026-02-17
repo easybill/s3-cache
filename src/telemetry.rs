@@ -3,6 +3,7 @@ use std::{sync::LazyLock, time::Duration};
 use opentelemetry::metrics::{Counter, Gauge};
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
 use opentelemetry_otlp::{Compression, WithExportConfig, WithTonicConfig};
+use prometheus::{IntCounter, IntGauge, Registry};
 use tracing::{error, info};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -12,6 +13,111 @@ static RESOURCE: LazyLock<opentelemetry_sdk::Resource> = LazyLock::new(|| {
     opentelemetry_sdk::Resource::builder()
         .with_service_name(CARGO_CRATE_NAME)
         .build()
+});
+
+// Prometheus registry and metrics
+
+pub(crate) static PROMETHEUS_REGISTRY: LazyLock<Registry> = LazyLock::new(|| {
+    Registry::new_custom(Some("s3_cache".to_string()), None)
+        .expect("Failed to create Prometheus registry")
+});
+
+static PROM_CACHE_HIT: LazyLock<IntCounter> = LazyLock::new(|| {
+    let counter = IntCounter::new("cache_hit_total", "Number of cache hits").unwrap();
+    PROMETHEUS_REGISTRY
+        .register(Box::new(counter.clone()))
+        .unwrap();
+    counter
+});
+
+static PROM_CACHE_MISS: LazyLock<IntCounter> = LazyLock::new(|| {
+    let counter = IntCounter::new("cache_miss_total", "Number of cache misses").unwrap();
+    PROMETHEUS_REGISTRY
+        .register(Box::new(counter.clone()))
+        .unwrap();
+    counter
+});
+
+static PROM_CACHE_INVALIDATION: LazyLock<IntCounter> = LazyLock::new(|| {
+    let counter =
+        IntCounter::new("cache_invalidation_total", "Number of cache invalidations").unwrap();
+    PROMETHEUS_REGISTRY
+        .register(Box::new(counter.clone()))
+        .unwrap();
+    counter
+});
+
+static PROM_CACHE_MISMATCH: LazyLock<IntCounter> = LazyLock::new(|| {
+    let counter = IntCounter::new(
+        "cache_mismatch_total",
+        "Number of cache mismatches detected in dryrun mode",
+    )
+    .unwrap();
+    PROMETHEUS_REGISTRY
+        .register(Box::new(counter.clone()))
+        .unwrap();
+    counter
+});
+
+static PROM_UPSTREAM_ERROR: LazyLock<IntCounter> = LazyLock::new(|| {
+    let counter =
+        IntCounter::new("cache_upstream_error_total", "Number of upstream S3 errors").unwrap();
+    PROMETHEUS_REGISTRY
+        .register(Box::new(counter.clone()))
+        .unwrap();
+    counter
+});
+
+static PROM_BUFFERING_ERROR: LazyLock<IntCounter> = LazyLock::new(|| {
+    let counter = IntCounter::new(
+        "cache_buffering_error_total",
+        "Number of buffering errors (object exceeded size limit during streaming)",
+    )
+    .unwrap();
+    PROMETHEUS_REGISTRY
+        .register(Box::new(counter.clone()))
+        .unwrap();
+    counter
+});
+
+static PROM_CACHE_SIZE_BYTES: LazyLock<IntGauge> = LazyLock::new(|| {
+    let gauge = IntGauge::new("cache_size_bytes", "Current cache size in bytes").unwrap();
+    PROMETHEUS_REGISTRY
+        .register(Box::new(gauge.clone()))
+        .unwrap();
+    gauge
+});
+
+static PROM_CACHE_ENTRY_COUNT: LazyLock<IntGauge> = LazyLock::new(|| {
+    let gauge = IntGauge::new("cache_entry_count", "Current number of entries in cache").unwrap();
+    PROMETHEUS_REGISTRY
+        .register(Box::new(gauge.clone()))
+        .unwrap();
+    gauge
+});
+
+static PROM_CACHE_UNIQUE_KEYS_ESTIMATE: LazyLock<IntGauge> = LazyLock::new(|| {
+    let gauge = IntGauge::new(
+        "cache_unique_keys_estimate",
+        "Estimated number of unique keys accessed (using HyperLogLog)",
+    )
+    .unwrap();
+    PROMETHEUS_REGISTRY
+        .register(Box::new(gauge.clone()))
+        .unwrap();
+    gauge
+});
+
+static PROM_CACHE_UNIQUE_BYTES_ESTIMATE: LazyLock<IntGauge> = LazyLock::new(|| {
+    let gauge = IntGauge::new(
+        "cache_unique_bytes_estimate",
+        "Estimated total bytes for unique keys accessed",
+    )
+    .unwrap();
+    PROMETHEUS_REGISTRY
+        .register(Box::new(gauge.clone()))
+        .unwrap();
+    gauge
 });
 
 pub(crate) fn initialize_telemetry(
@@ -149,14 +255,17 @@ static CACHE_ENTRY_COUNT: LazyLock<Gauge<u64>> = LazyLock::new(|| {
 
 pub(crate) fn record_cache_hit() {
     CACHE_HIT.add(1, &[]);
+    PROM_CACHE_HIT.inc();
 }
 
 pub(crate) fn record_cache_miss() {
     CACHE_MISS.add(1, &[]);
+    PROM_CACHE_MISS.inc();
 }
 
 pub(crate) fn record_cache_invalidation() {
     CACHE_INVALIDATION.add(1, &[]);
+    PROM_CACHE_INVALIDATION.inc();
 }
 
 static CACHE_MISMATCH: LazyLock<Counter<u64>> = LazyLock::new(|| {
@@ -168,6 +277,7 @@ static CACHE_MISMATCH: LazyLock<Counter<u64>> = LazyLock::new(|| {
 
 pub(crate) fn record_cache_mismatch() {
     CACHE_MISMATCH.add(1, &[]);
+    PROM_CACHE_MISMATCH.inc();
 }
 
 static UPSTREAM_ERROR: LazyLock<Counter<u64>> = LazyLock::new(|| {
@@ -186,15 +296,19 @@ static BUFFERING_ERROR: LazyLock<Counter<u64>> = LazyLock::new(|| {
 
 pub(crate) fn record_upstream_error() {
     UPSTREAM_ERROR.add(1, &[]);
+    PROM_UPSTREAM_ERROR.inc();
 }
 
 pub(crate) fn record_buffering_error() {
     BUFFERING_ERROR.add(1, &[]);
+    PROM_BUFFERING_ERROR.inc();
 }
 
 pub(crate) fn record_cache_stats(entry_count: usize, size_bytes: usize) {
     CACHE_SIZE_BYTES.record(size_bytes as u64, &[]);
     CACHE_ENTRY_COUNT.record(entry_count as u64, &[]);
+    PROM_CACHE_SIZE_BYTES.set(size_bytes as i64);
+    PROM_CACHE_ENTRY_COUNT.set(entry_count as i64);
 }
 
 static CACHE_ESTIMATED_UNIQUE_KEYS: LazyLock<Gauge<u64>> = LazyLock::new(|| {
@@ -214,4 +328,6 @@ static CACHE_ESTIMATED_UNIQUE_BYTES: LazyLock<Gauge<u64>> = LazyLock::new(|| {
 pub(crate) fn record_counter_estimates(unique_count: usize, unique_bytes: usize) {
     CACHE_ESTIMATED_UNIQUE_KEYS.record(unique_count as u64, &[]);
     CACHE_ESTIMATED_UNIQUE_BYTES.record(unique_bytes as u64, &[]);
+    PROM_CACHE_UNIQUE_KEYS_ESTIMATE.set(unique_count as i64);
+    PROM_CACHE_UNIQUE_BYTES_ESTIMATE.set(unique_bytes as i64);
 }

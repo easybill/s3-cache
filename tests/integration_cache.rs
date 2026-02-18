@@ -129,7 +129,7 @@ async fn test_cache_size_eviction() {
 }
 
 #[tokio::test]
-async fn test_cache_entry_count_limit() {
+async fn test_cache_object_count_limit() {
     let backend = MockS3Backend::new();
 
     // Populate backend

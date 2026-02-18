@@ -128,7 +128,7 @@ When `OTEL_GRPC_ENDPOINT_URL` is configured, the following metrics are exported:
 | `cache.upstream_error`  | Counter | Upstream S3 errors                                       |
 | `cache.buffering_error` | Counter | Buffering errors (object exceeded size limit mid-stream) |
 | `cache.size_bytes`      | Gauge   | Current cache size in bytes                              |
-| `cache.entry_count`     | Gauge   | Current number of cached entries                         |
+| `cache.object_count`    | Gauge   | Current number of cached objects                         |
 
 ## Testing
 

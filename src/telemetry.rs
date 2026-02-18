@@ -88,8 +88,8 @@ static PROM_CACHE_SIZE_BYTES: LazyLock<IntGauge> = LazyLock::new(|| {
     gauge
 });
 
-static PROM_CACHE_ENTRY_COUNT: LazyLock<IntGauge> = LazyLock::new(|| {
-    let gauge = IntGauge::new("cache_entry_count", "Current number of entries in cache").unwrap();
+static PROM_CACHE_OBJECT_COUNT: LazyLock<IntGauge> = LazyLock::new(|| {
+    let gauge = IntGauge::new("cache_object_count", "Current number of objects in cache").unwrap();
     PROMETHEUS_REGISTRY
         .register(Box::new(gauge.clone()))
         .unwrap();
@@ -246,10 +246,10 @@ static CACHE_SIZE_BYTES: LazyLock<Gauge<u64>> = LazyLock::new(|| {
         .build()
 });
 
-static CACHE_ENTRY_COUNT: LazyLock<Gauge<u64>> = LazyLock::new(|| {
+static CACHE_OBJECT_COUNT: LazyLock<Gauge<u64>> = LazyLock::new(|| {
     opentelemetry::global::meter(CARGO_CRATE_NAME)
-        .u64_gauge("cache.entry_count")
-        .with_description("Current number of entries in cache")
+        .u64_gauge("cache.object_count")
+        .with_description("Current number of objects in cache")
         .build()
 });
 
@@ -304,11 +304,11 @@ pub(crate) fn record_buffering_error() {
     PROM_BUFFERING_ERROR.inc();
 }
 
-pub(crate) fn record_cache_stats(entry_count: usize, size_bytes: usize) {
+pub(crate) fn record_cache_stats(object_count: usize, size_bytes: usize) {
     CACHE_SIZE_BYTES.record(size_bytes as u64, &[]);
-    CACHE_ENTRY_COUNT.record(entry_count as u64, &[]);
+    CACHE_OBJECT_COUNT.record(object_count as u64, &[]);
     PROM_CACHE_SIZE_BYTES.set(size_bytes as i64);
-    PROM_CACHE_ENTRY_COUNT.set(entry_count as i64);
+    PROM_CACHE_OBJECT_COUNT.set(object_count as i64);
 }
 
 static CACHE_ESTIMATED_UNIQUE_KEYS: LazyLock<Gauge<u64>> = LazyLock::new(|| {

@@ -208,10 +208,10 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
                             || cached_hit.last_modified != output.last_modified
                         {
                             warn!(
-                                bucket = %cache_key.bucket,
-                                key = %cache_key.key,
-                                range = ?cache_key.range,
-                                version_id = ?cache_key.version_id,
+                                bucket = %cache_key.bucket(),
+                                key = %cache_key.key(),
+                                range = ?cache_key.range(),
+                                version_id = ?cache_key.version_id(),
                                 cached_len = cached_hit.body.len(),
                                 fresh_len = bytes.len(),
                                 "cache mismatch: cached object differs from upstream"

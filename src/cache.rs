@@ -20,6 +20,15 @@ type ValuesMap<K, V> = HashMap<K, ValueEntry<V>>;
 ///
 /// Note: The `S3` in `S3FifoCache` refers to `S3-FIFO`'s three
 /// internal static queues, not to Amazon's `S3` web service.
+///
+/// # Memory Estimates
+///
+/// Given a max length of `N` the cache requires memory of approximately:
+///
+/// ```plain
+/// APPROX_MIN_BYTES = N * (3 * sizeof(K))
+/// APPROX_MAX_BYTES = N * (4 * sizeof(K) + sizeof(V))
+/// ```
 pub struct S3FifoCache<K, V> {
     values: ValuesMap<K, V>,
 

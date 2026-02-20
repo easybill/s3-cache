@@ -38,6 +38,15 @@ impl AsyncS3CacheShard {
 /// Keys are distributed across shards by hashing, each guarded by its own
 /// `RwLock`. All shards share a single global size budget tracked via atomics.
 ///
+/// # Memory Estimates
+///
+/// Given a max length of `N` the cache requires memory of approximately:
+///
+/// ```plain
+/// APPROX_MIN_BYTES = N * 6
+/// APPROX_MAX_BYTES = N * (8 + sizeof(K) + sizeof(V))
+/// ```
+///
 /// Note: The `S3` in `AsyncS3Cache` refers to Amazon's `S3` web service.
 pub struct AsyncS3Cache {
     shards: Vec<AsyncS3CacheShard>,

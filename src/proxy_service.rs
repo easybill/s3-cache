@@ -102,7 +102,7 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
                     let body = StreamingBlob::from(s3s::Body::from(cached.body.clone()));
                     let output = GetObjectOutput {
                         body: Some(body),
-                        content_length: Some(cached.content_length),
+                        content_length: Some(cached.content_length as i64),
                         content_type: cached.content_type.clone(),
                         e_tag: cached.e_tag.clone(),
                         last_modified: cached.last_modified.clone(),
@@ -183,7 +183,6 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
 
         match body.store_all_limited(max_cacheable_size).await {
             Ok(bytes) => {
-                let content_length = bytes.len() as i64;
                 let cached = CachedObject::new(
                     bytes.clone(),
                     output.content_type.clone(),
@@ -198,6 +197,7 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
                     output.content_range.clone(),
                     output.metadata.clone(),
                 );
+                let content_length = bytes.len();
 
                 // In dryrun mode, compare the fresh body against the cached one
                 if self.dry_run {
@@ -212,7 +212,7 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
                                 key = %cache_key.key(),
                                 range = ?cache_key.range(),
                                 version_id = ?cache_key.version_id(),
-                                cached_len = cached_hit.body.len(),
+                                cached_len = cached_hit.content_length,
                                 fresh_len = bytes.len(),
                                 "cache mismatch: cached object differs from upstream"
                             );
@@ -232,7 +232,7 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
                 let new_body = StreamingBlob::from(s3s::Body::from(bytes));
                 let new_output = GetObjectOutput {
                     body: Some(new_body),
-                    content_length: Some(content_length),
+                    content_length: Some(content_length as i64),
                     content_type: output.content_type,
                     e_tag: output.e_tag,
                     last_modified: output.last_modified,

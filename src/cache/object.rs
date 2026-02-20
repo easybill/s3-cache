@@ -18,7 +18,6 @@ pub struct CachedObject {
     pub content_type: Option<ContentType>,
     pub e_tag: Option<ETag>,
     pub last_modified: Option<LastModified>,
-    pub content_length: i64,
     pub accept_ranges: Option<AcceptRanges>,
     pub cache_control: Option<CacheControl>,
     pub content_disposition: Option<ContentDisposition>,
@@ -26,6 +25,7 @@ pub struct CachedObject {
     pub content_language: Option<ContentLanguage>,
     pub content_range: Option<ContentRange>,
     pub metadata: Option<Metadata>,
+    content_length: usize,
     inserted_at: Instant,
 }
 
@@ -35,7 +35,7 @@ impl CachedObject {
         content_type: Option<ContentType>,
         e_tag: Option<ETag>,
         last_modified: Option<LastModified>,
-        content_length: i64,
+        content_length: usize,
         accept_ranges: Option<AcceptRanges>,
         cache_control: Option<CacheControl>,
         content_disposition: Option<ContentDisposition>,
@@ -64,10 +64,6 @@ impl CachedObject {
     pub fn is_expired(&self, ttl: Duration) -> bool {
         self.inserted_at.elapsed() > ttl
     }
-
-    pub fn size(&self) -> usize {
-        self.body.len()
-    }
 }
 
 impl Clone for CachedObject {
@@ -87,5 +83,9 @@ impl Clone for CachedObject {
             metadata: self.metadata.clone(),
             inserted_at: self.inserted_at,
         }
+
+    pub fn content_length(&self) -> usize {
+        self.content_length
+    }
     }
 }

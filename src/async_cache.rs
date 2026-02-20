@@ -162,7 +162,7 @@ impl AsyncS3Cache {
 
     /// Insert a cached object.
     pub async fn insert(&self, key: CacheKey, value: CachedObject) -> Option<CachedObject> {
-        let size = value.size();
+        let size = value.content_length();
         let shard_idx = self.shard_index(&key);
         let shard = &self.shards[shard_idx];
 
@@ -174,7 +174,7 @@ impl AsyncS3Cache {
                 break;
             };
 
-            let evicted_size = evicted_value.size();
+            let evicted_size = evicted_value.content_length();
             shard.size.fetch_sub(evicted_size, Ordering::Relaxed);
             self.global_size.fetch_sub(evicted_size, Ordering::Relaxed);
         }
@@ -200,7 +200,7 @@ impl AsyncS3Cache {
         self.global_size.fetch_add(size, Ordering::Relaxed);
 
         if let Some(existing) = &existing {
-            let existing_size = existing.size();
+            let existing_size = existing.content_length();
             shard.size.fetch_sub(existing_size, Ordering::Relaxed);
             self.global_size.fetch_sub(existing_size, Ordering::Relaxed);
         }
@@ -236,7 +236,7 @@ impl AsyncS3Cache {
                 break;
             };
 
-            let evicted_size = evicted_value.size();
+            let evicted_size = evicted_value.content_length();
             target.size.fetch_sub(evicted_size, Ordering::Relaxed);
             self.global_size.fetch_sub(evicted_size, Ordering::Relaxed);
         }
@@ -250,7 +250,7 @@ impl AsyncS3Cache {
         let removed = cache.remove(key);
 
         if let Some(removed) = &removed {
-            let size = removed.size();
+            let size = removed.content_length();
             shard.size.fetch_sub(size, Ordering::Relaxed);
             self.global_size.fetch_sub(size, Ordering::Relaxed);
         }
@@ -275,7 +275,7 @@ impl AsyncS3Cache {
                 let is_match = key.matches_object(bucket, object_key);
 
                 if is_match {
-                    size += value.size();
+                    size += value.content_length();
                     count += 1;
                 }
 

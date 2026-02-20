@@ -1,3 +1,4 @@
+use std::hash::{BuildHasher, RandomState};
 use std::sync::Arc;
 
 use s3s::dto::*;
@@ -6,8 +7,8 @@ use s3s_aws::Proxy;
 use tracing::{debug, error, warn};
 
 use crate::async_cache::AsyncS3Cache;
-use crate::cache::CacheKey;
 use crate::cache::CachedObject;
+use crate::cache::{CacheKey, CachedObjectBody};
 use crate::telemetry;
 
 use self::counter::CachingCounter;
@@ -99,28 +100,15 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
                 cache.report_stats().await;
 
                 if !self.dry_run {
-                    let body = StreamingBlob::from(s3s::Body::from(cached.body.clone()));
-                    let output = GetObjectOutput {
-                        body: Some(body),
-                        content_length: Some(cached.content_length as i64),
-                        content_type: cached.content_type.clone(),
-                        e_tag: cached.e_tag.clone(),
-                        last_modified: cached.last_modified.clone(),
-                        accept_ranges: cached.accept_ranges.clone(),
-                        cache_control: cached.cache_control.clone(),
-                        content_disposition: cached.content_disposition.clone(),
-                        content_encoding: cached.content_encoding.clone(),
-                        content_language: cached.content_language.clone(),
-                        content_range: cached.content_range.clone(),
-                        metadata: cached.metadata.clone(),
-                        ..Default::default()
-                    };
-
-                    self.counter.insert(&key, cached.content_length as usize);
+                    self.counter.insert(&key, cached.content_length());
                     telemetry::record_counter_estimates(
                         self.counter.estimated_count(),
                         self.counter.estimated_bytes(),
                     );
+
+                    let Some(output) = cached.to_s3_object() else {
+                        panic!("expected bytes, found hash");
+                    };
 
                     return Ok(S3Response::new(output));
                 }
@@ -183,8 +171,43 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
 
         match body.store_all_limited(max_cacheable_size).await {
             Ok(bytes) => {
+                let content_length = bytes.len();
+
+                let body = if self.dry_run {
+                    let hash = RandomState::new().hash_one(&bytes);
+                    CachedObjectBody::Hash { hash }
+                } else {
+                    CachedObjectBody::Bytes {
+                        bytes: bytes.clone(),
+                    }
+                };
+
+                // In dry-run mode, compare the fresh body against the cached one
+                if self.dry_run {
+                    if let Some(cached_hit) = &cached_hit {
+                        if cached_hit.content_type() != output.content_type.as_ref()
+                            || cached_hit.e_tag() != output.e_tag.as_ref()
+                            || cached_hit.last_modified() != output.last_modified.as_ref()
+                            || cached_hit.body() != &body
+                        {
+                            warn!(
+                                bucket = %cache_key.bucket(),
+                                key = %cache_key.key(),
+                                range = ?cache_key.range(),
+                                version_id = ?cache_key.version_id(),
+                                cached_len = cached_hit.content_length(),
+                                fresh_len = bytes.len(),
+                                "cache mismatch: cached object differs from upstream"
+                            );
+                            telemetry::record_cache_mismatch();
+                        } else {
+                            debug!(bucket = %bucket, key = %key, "dry-run: cached object matches upstream");
+                        }
+                    }
+                }
+
                 let cached = CachedObject::new(
-                    bytes.clone(),
+                    body,
                     output.content_type.clone(),
                     output.e_tag.clone(),
                     output.last_modified.clone(),
@@ -197,31 +220,6 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
                     output.content_range.clone(),
                     output.metadata.clone(),
                 );
-                let content_length = bytes.len();
-
-                // In dryrun mode, compare the fresh body against the cached one
-                if self.dry_run {
-                    if let Some(cached_hit) = &cached_hit {
-                        if cached_hit.body != bytes
-                            || cached_hit.content_type != output.content_type
-                            || cached_hit.e_tag != output.e_tag
-                            || cached_hit.last_modified != output.last_modified
-                        {
-                            warn!(
-                                bucket = %cache_key.bucket(),
-                                key = %cache_key.key(),
-                                range = ?cache_key.range(),
-                                version_id = ?cache_key.version_id(),
-                                cached_len = cached_hit.content_length,
-                                fresh_len = bytes.len(),
-                                "cache mismatch: cached object differs from upstream"
-                            );
-                            telemetry::record_cache_mismatch();
-                        } else {
-                            debug!(bucket = %bucket, key = %key, "dryrun: cached object matches upstream");
-                        }
-                    }
-                }
 
                 if let Some(cache) = &self.cache {
                     let _existing = cache.insert(cache_key, cached).await;

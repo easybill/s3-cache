@@ -6,7 +6,7 @@ pub use self::entry::ValueEntry;
 pub use self::fifo::*;
 pub use self::ghost_list::*;
 pub use self::key::CacheKey;
-pub use self::object::CachedObject;
+pub use self::object::{CachedObject, CachedObjectBody};
 
 mod entry;
 mod fifo;

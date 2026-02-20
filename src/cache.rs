@@ -29,13 +29,17 @@ pub struct S3FifoCache<K, V> {
 }
 
 impl<K: Clone + Eq + Hash, V> S3FifoCache<K, V> {
+    pub const SCALE_FACTOR: usize = 10;
+
     pub fn with_max_len(max_len: usize) -> Self {
+        let scale_factor = Self::SCALE_FACTOR;
+
         let max_small_len: usize = match max_len {
             0 => 0,
             1 => 1,
-            2..=10 => max_len / 2,
-            11..=20 => max_len / 5,
-            21.. => max_len / 10,
+            2..=10 => max_len / 2.max(scale_factor),
+            11..=20 => max_len / 5.max(scale_factor),
+            21.. => max_len / scale_factor,
         };
         let max_main_len: usize = max_len - max_small_len;
 

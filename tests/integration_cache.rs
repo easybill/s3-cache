@@ -6,7 +6,7 @@ use common::helpers::*;
 use s3_cache::CacheKey;
 use s3_cache::proxy_service::CachingProxy;
 use s3s::S3;
-use std::time::Duration;
+use std::sync::Arc;
 use std::usize;
 
 #[tokio::test]
@@ -214,7 +214,12 @@ async fn test_concurrent_cache_access() {
         .await;
 
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
+    let proxy = Arc::new(CachingProxy::new(
+        backend.clone(),
+        Some(cache.clone()),
+        usize::MAX,
+        false,
+    ));
 
     // Spawn multiple concurrent requests
     let mut handles = vec![];

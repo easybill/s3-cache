@@ -43,7 +43,7 @@ async fn test_get_object_cache_miss_then_hit() {
 #[cfg_attr(not(feature = "mock-clock"), ignore = "requires mock-clock feature")]
 async fn test_cache_ttl_expiration() {
     #[cfg(feature = "mock-clock")]
-    mock_instant::global::MockClock::set_time(Duration::ZERO);
+    mock_instant::global::MockClock::set_time(std::time::Duration::ZERO);
 
     let backend = MockS3Backend::new();
     backend
@@ -62,7 +62,7 @@ async fn test_cache_ttl_expiration() {
 
     // Advance mock clock past TTL
     #[cfg(feature = "mock-clock")]
-    mock_instant::global::MockClock::advance(Duration::from_secs(61));
+    mock_instant::global::MockClock::advance(std::time::Duration::from_secs(61));
 
     // Update backend data
     backend

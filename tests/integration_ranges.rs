@@ -8,7 +8,7 @@ use s3s::S3;
 use s3s::dto::Range;
 
 #[tokio::test]
-async fn test_range_requests_cached_separately() {
+async fn range_requests_cached_separately() {
     let backend = MockS3Backend::new();
     backend
         .put_object_sync("test-bucket", "file.txt", b"0123456789")
@@ -52,7 +52,7 @@ async fn test_range_requests_cached_separately() {
 }
 
 #[tokio::test]
-async fn test_overlapping_ranges_separate_cache() {
+async fn overlapping_ranges_separate_cache() {
     let backend = MockS3Backend::new();
     backend
         .put_object_sync("test-bucket", "data.bin", b"0123456789")
@@ -101,7 +101,7 @@ async fn test_overlapping_ranges_separate_cache() {
 }
 
 #[tokio::test]
-async fn test_suffix_range_caching() {
+async fn suffix_range_caching() {
     let backend = MockS3Backend::new();
     backend
         .put_object_sync("test-bucket", "file.txt", b"0123456789")
@@ -133,7 +133,7 @@ async fn test_suffix_range_caching() {
 }
 
 #[tokio::test]
-async fn test_range_invalidation_removes_all() {
+async fn range_invalidation_removes_all() {
     let backend = MockS3Backend::new();
     backend
         .put_object_sync("test-bucket", "multi-range.txt", b"0123456789")
@@ -197,7 +197,7 @@ async fn test_range_invalidation_removes_all() {
 }
 
 #[tokio::test]
-async fn test_full_request_does_not_populate_range_cache() {
+async fn full_request_does_not_populate_range_cache() {
     let backend = MockS3Backend::new();
     backend
         .put_object_sync("test-bucket", "file.txt", b"0123456789")

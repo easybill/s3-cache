@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::usize;
 
 #[tokio::test]
-async fn test_get_object_cache_miss_then_hit() {
+async fn get_object_cache_miss_then_hit() {
     // Setup: MockS3Backend with test data
     let backend = MockS3Backend::new();
     backend
@@ -41,7 +41,7 @@ async fn test_get_object_cache_miss_then_hit() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "mock-clock"), ignore = "requires mock-clock feature")]
-async fn test_cache_ttl_expiration() {
+async fn cache_ttl_expiration() {
     #[cfg(feature = "mock-clock")]
     mock_instant::global::MockClock::set_time(std::time::Duration::ZERO);
 
@@ -78,7 +78,7 @@ async fn test_cache_ttl_expiration() {
 }
 
 #[tokio::test]
-async fn test_cache_size_eviction() {
+async fn cache_size_eviction() {
     let backend = MockS3Backend::new();
 
     // Populate backend with multiple objects
@@ -129,7 +129,7 @@ async fn test_cache_size_eviction() {
 }
 
 #[tokio::test]
-async fn test_cache_object_count_limit() {
+async fn cache_object_count_limit() {
     let backend = MockS3Backend::new();
 
     // Populate backend
@@ -175,7 +175,7 @@ async fn test_cache_object_count_limit() {
 }
 
 #[tokio::test]
-async fn test_oversized_object_not_cached() {
+async fn oversized_object_not_cached() {
     let backend = MockS3Backend::new();
 
     // Large object (1MB)
@@ -207,7 +207,7 @@ async fn test_oversized_object_not_cached() {
 }
 
 #[tokio::test]
-async fn test_concurrent_cache_access() {
+async fn concurrent_cache_access() {
     let backend = MockS3Backend::new();
     backend
         .put_object_sync("test-bucket", "concurrent.txt", b"data")
@@ -247,7 +247,7 @@ async fn test_concurrent_cache_access() {
 }
 
 #[tokio::test]
-async fn test_different_buckets_separate_cache() {
+async fn different_buckets_separate_cache() {
     let backend = MockS3Backend::new();
     backend
         .put_object_sync("bucket-a", "key.txt", b"data-a")
@@ -278,7 +278,7 @@ async fn test_different_buckets_separate_cache() {
 }
 
 #[tokio::test]
-async fn test_cache_byte_size_eviction() {
+async fn cache_byte_size_eviction() {
     let backend = MockS3Backend::new();
 
     // Each object is 500 bytes
@@ -322,7 +322,7 @@ async fn test_cache_byte_size_eviction() {
 }
 
 #[tokio::test]
-async fn test_backend_error_not_cached() {
+async fn backend_error_not_cached() {
     let backend = MockS3Backend::new();
     // Don't add the object — backend will return NoSuchKey
 
@@ -340,7 +340,7 @@ async fn test_backend_error_not_cached() {
 }
 
 #[tokio::test]
-async fn test_max_cacheable_size_rejects_large_objects() {
+async fn max_cacheable_size_rejects_large_objects() {
     let backend = MockS3Backend::new();
 
     let small_data = vec![b's'; 100];
@@ -377,7 +377,7 @@ async fn test_max_cacheable_size_rejects_large_objects() {
 }
 
 #[tokio::test]
-async fn test_cache_hit_preserves_metadata() {
+async fn cache_hit_preserves_metadata() {
     let backend = MockS3Backend::new();
     backend
         .put_object_sync("test-bucket", "meta.txt", b"hello")
@@ -406,7 +406,7 @@ async fn test_cache_hit_preserves_metadata() {
 }
 
 #[tokio::test]
-async fn test_head_object_does_not_populate_cache() {
+async fn head_object_does_not_populate_cache() {
     let backend = MockS3Backend::new();
     backend
         .put_object_sync("test-bucket", "head-test.txt", b"data")
@@ -439,7 +439,7 @@ async fn test_head_object_does_not_populate_cache() {
 }
 
 #[tokio::test]
-async fn test_put_then_get_sees_new_content() {
+async fn put_then_get_sees_new_content() {
     let backend = MockS3Backend::new();
     backend
         .put_object_sync("test-bucket", "mutable.txt", b"version1")

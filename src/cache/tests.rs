@@ -6,7 +6,7 @@ struct TestData {
 }
 
 #[test]
-fn test_basic_insertion_and_retrieval() {
+fn basic_insertion_and_retrieval() {
     let mut cache: S3FifoCache<String, TestData> = S3FifoCache::new(1000, 10000);
 
     let key1 = "test_key_1".to_string();
@@ -21,7 +21,7 @@ fn test_basic_insertion_and_retrieval() {
 }
 
 #[test]
-fn test_remove() {
+fn remove() {
     let mut cache: S3FifoCache<String, TestData> = S3FifoCache::new(1000, 10000);
 
     let key = "test_key".to_string();
@@ -39,7 +39,7 @@ fn test_remove() {
 }
 
 #[test]
-fn test_retain() {
+fn retain() {
     let mut cache: S3FifoCache<String, TestData> = S3FifoCache::new(1000, 10000);
 
     for i in 0..5 {
@@ -61,7 +61,7 @@ fn test_retain() {
 }
 
 #[test]
-fn test_cache_eviction_by_len() {
+fn cache_eviction_by_len() {
     let mut cache: S3FifoCache<String, TestData> = S3FifoCache::with_max_len(10);
 
     for i in 0..20 {
@@ -74,7 +74,7 @@ fn test_cache_eviction_by_len() {
 }
 
 #[test]
-fn test_small_to_main_promotion() {
+fn small_to_main_promotion() {
     // small=2, main=3 → total capacity 5
     let mut cache: S3FifoCache<String, u32> = S3FifoCache::new(2, 3);
 
@@ -99,7 +99,7 @@ fn test_small_to_main_promotion() {
 }
 
 #[test]
-fn test_ghost_list_promotion() {
+fn ghost_list_promotion() {
     // small=2, main=3 → total 5
     let mut cache: S3FifoCache<String, u32> = S3FifoCache::new(2, 3);
 
@@ -124,7 +124,7 @@ fn test_ghost_list_promotion() {
 }
 
 #[test]
-fn test_fifo_reinsertion_in_main() {
+fn fifo_reinsertion_in_main() {
     // small=1, main=3 → total 4
     let mut cache: S3FifoCache<String, u32> = S3FifoCache::new(1, 3);
 
@@ -161,7 +161,7 @@ fn test_fifo_reinsertion_in_main() {
 }
 
 #[test]
-fn test_eviction_after_remove_tombstones() {
+fn eviction_after_remove_tombstones() {
     // small=3, main=7 → total 10
     let mut cache: S3FifoCache<String, u32> = S3FifoCache::new(3, 7);
 
@@ -191,7 +191,7 @@ fn test_eviction_after_remove_tombstones() {
 }
 
 #[test]
-fn test_eviction_after_retain_tombstones() {
+fn eviction_after_retain_tombstones() {
     // small=3, main=7 → total 10
     let mut cache: S3FifoCache<String, u32> = S3FifoCache::new(3, 7);
 
@@ -222,7 +222,7 @@ fn test_eviction_after_retain_tombstones() {
 }
 
 #[test]
-fn test_no_panic_on_main_reinsertion() {
+fn no_panic_on_main_reinsertion() {
     // Regression test for Bug 1: pop_from_main_impl must loop.
     // With small=1 and main=3, fill main with accessed items, then trigger eviction.
     let mut cache: S3FifoCache<String, u32> = S3FifoCache::new(1, 3);
@@ -247,7 +247,7 @@ fn test_no_panic_on_main_reinsertion() {
 }
 
 #[test]
-fn test_small_queue_filters_one_hit_wonders() {
+fn small_queue_filters_one_hit_wonders() {
     // small=2, main=8 → total 10
     let mut cache: S3FifoCache<String, u32> = S3FifoCache::new(2, 8);
 
@@ -277,7 +277,7 @@ fn test_small_queue_filters_one_hit_wonders() {
 }
 
 #[test]
-fn test_cache_len_invariant() {
+fn cache_len_invariant() {
     let mut cache: S3FifoCache<String, u32> = S3FifoCache::new(3, 7);
 
     // Interleave inserts, removes, retains, and evictions

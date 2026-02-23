@@ -172,7 +172,7 @@ mod tests {
     }
 
     #[test]
-    fn test_config_valid() {
+    fn config_valid() {
         let env = minimal_env();
         let config = Config::from_env(&env);
         assert_eq!(config.cache_max_entries, 10_000);
@@ -182,7 +182,7 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "cache_max_size_bytes")]
-    fn test_config_max_size_too_small() {
+    fn config_max_size_too_small() {
         let mut env = minimal_env();
         env.insert("CACHE_MAX_SIZE_BYTES".to_string(), "1000".to_string());
         env.insert(
@@ -194,7 +194,7 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "cache_ttl_seconds")]
-    fn test_config_zero_ttl() {
+    fn config_zero_ttl() {
         let mut env = minimal_env();
         env.insert("CACHE_TTL_SECONDS".to_string(), "0".to_string());
         Config::from_env(&env);
@@ -202,7 +202,7 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "cache_max_entries")]
-    fn test_config_zero_max_entries() {
+    fn config_zero_max_entries() {
         let mut env = minimal_env();
         env.insert("CACHE_MAX_ENTRIES".to_string(), "0".to_string());
         Config::from_env(&env);
@@ -210,7 +210,7 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "worker_threads")]
-    fn test_config_zero_worker_threads() {
+    fn config_zero_worker_threads() {
         let mut env = minimal_env();
         env.insert("WORKER_THREADS".to_string(), "0".to_string());
         Config::from_env(&env);

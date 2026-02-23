@@ -59,14 +59,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_default_creation() {
+    fn default_creation() {
         let counter = CachingCounter::default();
         assert_eq!(counter.estimated_bytes(), 0);
         assert_eq!(counter.estimated_count(), 0);
     }
 
     #[test]
-    fn test_custom_false_positive_rate() {
+    fn custom_false_positive_rate() {
         // Use 0.05 which should give a valid precision (within 4..=18)
         let counter = CachingCounter::new(0.05);
         assert_eq!(counter.estimated_bytes(), 0);
@@ -74,7 +74,7 @@ mod tests {
     }
 
     #[test]
-    fn test_insert_unique_keys() {
+    fn insert_unique_keys() {
         let counter = CachingCounter::default();
         let initial_bytes = counter.estimated_bytes();
 
@@ -98,7 +98,7 @@ mod tests {
     }
 
     #[test]
-    fn test_duplicate_key_does_not_add_extra_estimated_bytes() {
+    fn duplicate_key_does_not_add_extra_estimated_bytes() {
         let counter = CachingCounter::default();
 
         // Insert the same key multiple times
@@ -117,7 +117,7 @@ mod tests {
     }
 
     #[test]
-    fn test_mixed_unique_and_duplicate_keys() {
+    fn mixed_unique_and_duplicate_keys() {
         let counter = CachingCounter::default();
 
         counter.insert(&"key1", 100);
@@ -147,7 +147,7 @@ mod tests {
     }
 
     #[test]
-    fn test_different_types_as_keys() {
+    fn different_types_as_keys() {
         let counter = CachingCounter::default();
 
         counter.insert(&42i32, 50);
@@ -163,7 +163,7 @@ mod tests {
     }
 
     #[test]
-    fn test_zero_byte_inserts() {
+    fn zero_byte_inserts() {
         let counter = CachingCounter::default();
 
         counter.insert(&"key1", 0);
@@ -178,7 +178,7 @@ mod tests {
     }
 
     #[test]
-    fn test_large_number_of_unique_keys() {
+    fn large_number_of_unique_keys() {
         let counter = CachingCounter::default();
         let num_keys = 10_000;
 
@@ -215,7 +215,7 @@ mod tests {
     }
 
     #[test]
-    fn test_concurrent_inserts() {
+    fn concurrent_inserts() {
         let counter = Arc::new(CachingCounter::default());
         let num_threads = 4;
         let inserts_per_thread = 2500;
@@ -265,7 +265,7 @@ mod tests {
     }
 
     #[test]
-    fn test_concurrent_duplicate_inserts() {
+    fn concurrent_duplicate_inserts() {
         let counter = Arc::new(CachingCounter::default());
         let num_threads = 4;
         let inserts_per_thread = 2500;
@@ -313,7 +313,7 @@ mod tests {
     }
 
     #[test]
-    fn test_duplicate_detection_with_varying_byte_sizes() {
+    fn duplicate_detection_with_varying_byte_sizes() {
         let counter = CachingCounter::default();
 
         // First insert with 100 bytes

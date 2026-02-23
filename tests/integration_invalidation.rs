@@ -7,7 +7,7 @@ use s3_cache::proxy_service::CachingProxy;
 use s3s::S3;
 
 #[tokio::test]
-async fn test_put_invalidates_cache() {
+async fn put_invalidates_cache() {
     let backend = MockS3Backend::new();
     backend
         .put_object_sync("test-bucket", "file.txt", b"original")
@@ -41,7 +41,7 @@ async fn test_put_invalidates_cache() {
 }
 
 #[tokio::test]
-async fn test_delete_invalidates_cache() {
+async fn delete_invalidates_cache() {
     let backend = MockS3Backend::new();
     backend
         .put_object_sync("test-bucket", "deleteme.txt", b"data")
@@ -68,7 +68,7 @@ async fn test_delete_invalidates_cache() {
 }
 
 #[tokio::test]
-async fn test_delete_objects_invalidates_all() {
+async fn delete_objects_invalidates_all() {
     let backend = MockS3Backend::new();
     for i in 0..5 {
         backend
@@ -102,7 +102,7 @@ async fn test_delete_objects_invalidates_all() {
 }
 
 #[tokio::test]
-async fn test_copy_invalidates_destination() {
+async fn copy_invalidates_destination() {
     let backend = MockS3Backend::new();
     backend
         .put_object_sync("test-bucket", "source.txt", b"source data")
@@ -136,7 +136,7 @@ async fn test_copy_invalidates_destination() {
 }
 
 #[tokio::test]
-async fn test_invalidation_removes_all_ranges() {
+async fn invalidation_removes_all_ranges() {
     let backend = MockS3Backend::new();
     backend
         .put_object_sync("test-bucket", "ranged.txt", b"0123456789")
@@ -171,7 +171,7 @@ async fn test_invalidation_removes_all_ranges() {
 }
 
 #[tokio::test]
-async fn test_put_only_invalidates_target_key() {
+async fn put_only_invalidates_target_key() {
     let backend = MockS3Backend::new();
     backend
         .put_object_sync("test-bucket", "file1.txt", b"data1")

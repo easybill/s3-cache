@@ -2,6 +2,9 @@
 
 A high-performance, transparent S3 caching proxy that sits between clients and S3, using the S3-FIFO eviction algorithm to cache `GetObject` responses in memory.
 
+> [!WARNING]
+> This project is still experimental and under active development. Use in production at your own risk.
+
 ## What It Does
 
 S3 Cache is a caching layer for S3-compatible object storage (e.g. MinIO) that:

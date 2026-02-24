@@ -84,8 +84,8 @@ jobs:
           path: binaries
       - name: Build and push
         run: |
-          tar -xzf binaries/s3-cache-${{ matrix.container.rust_target }}/s3_cache_${{ matrix.container.rust_target }}.tar.gz -C binaries/s3-cache-${{ matrix.container.rust_target }}/
-          cp binaries/s3-cache-${{ matrix.container.rust_target }}/s3_cache_${{ matrix.container.rust_target }} binary_s3_cache
+          tar -xzf binaries/s3-cache-${{ matrix.container.rust_target }}/s3-cache-${{ matrix.container.rust_target }}.tar.gz -C binaries/s3-cache-${{ matrix.container.rust_target }}/
+          cp binaries/s3-cache-${{ matrix.container.rust_target }}/s3-cache-${{ matrix.container.rust_target }} binary_s3_cache
           chmod +x binary_s3_cache
           docker buildx build -f Dockerfile.release -o type=docker --platform linux/${{ matrix.container.arch }} -t easybill/s3-cache:${{github.ref_name}}_${{ matrix.container.arch }} .
           docker push easybill/s3-cache:${{github.ref_name}}_${{ matrix.container.arch }}

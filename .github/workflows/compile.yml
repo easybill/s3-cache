@@ -29,15 +29,17 @@ jobs:
           use-cross: true
           command: build
           args: "--release --bin s3_cache --target ${{ matrix.container.rust_target }}"
-      - name: Rename binary
+      - name: Package binary
         run: |
-          cp target/${{ matrix.container.rust_target }}/release/s3_cache target/${{ matrix.container.rust_target }}/release/s3_cache_${{ matrix.container.rust_target }}
+          mkdir -p package
+          cp target/${{ matrix.container.rust_target }}/release/s3_cache package/s3-cache-${{ matrix.container.rust_target }}
+          cd package
+          tar -czf ../s3-cache-${{ matrix.container.rust_target }}.tar.gz s3-cache-${{ matrix.container.rust_target }}
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: s3-cache-${{ matrix.container.rust_target }}
-          path: |
-            target/${{ matrix.container.rust_target }}/release/s3_cache_${{ matrix.container.rust_target }}
+          path: s3-cache-${{ matrix.container.rust_target }}.tar.gz
 
   release:
     name: Release
@@ -82,6 +84,7 @@ jobs:
           path: binaries
       - name: Build and push
         run: |
+          tar -xzf binaries/s3-cache-${{ matrix.container.rust_target }}/s3_cache_${{ matrix.container.rust_target }}.tar.gz -C binaries/s3-cache-${{ matrix.container.rust_target }}/
           cp binaries/s3-cache-${{ matrix.container.rust_target }}/s3_cache_${{ matrix.container.rust_target }} binary_s3_cache
           chmod +x binary_s3_cache
           docker buildx build -f Dockerfile.release -o type=docker --platform linux/${{ matrix.container.arch }} -t easybill/s3-cache:${{github.ref_name}}_${{ matrix.container.arch }} .

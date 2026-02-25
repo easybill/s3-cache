@@ -50,7 +50,7 @@ pub use self::config::Config;
 pub use self::error::ApplicationError;
 pub use self::fifo_cache::FifoCache;
 pub use self::proxy_service::{CachingProxy, SharedCachingProxy, range_to_string};
-pub use self::s3_cache::{AsyncS3Cache, CacheKey, CachedObject};
+pub use self::s3_cache::{CacheKey, CachedObject, S3Cache};
 
 mod auth;
 mod config;
@@ -136,7 +136,7 @@ pub async fn start_app(config: Config) -> Result<()> {
 
     // Build cache
     let cache = config.cache_enabled.then(|| {
-        Arc::new(AsyncS3Cache::new(
+        Arc::new(S3Cache::new(
             config.cache_max_entries,
             config.cache_max_size_bytes,
             Duration::from_secs(config.cache_ttl_seconds as u64),

@@ -11,7 +11,7 @@ use http::{HeaderMap, Method, Uri};
 use s3s::dto::*;
 use s3s::{S3, S3Request};
 
-use s3_cache::{AsyncS3Cache, CachingProxy};
+use s3_cache::{S3Cache, CachingProxy};
 
 use simulated_backend::SimulatedBackend;
 use workload::Pattern;
@@ -146,7 +146,7 @@ async fn main() {
     let proxy: Option<Arc<CachingProxy<_>>> = if args.no_cache {
         None
     } else {
-        let cache = Arc::new(AsyncS3Cache::new(
+        let cache = Arc::new(S3Cache::new(
             args.cache_max_entries,
             args.cache_max_size,
             Duration::from_secs(args.cache_ttl_secs),

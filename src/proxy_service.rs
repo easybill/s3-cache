@@ -6,7 +6,7 @@ use s3s::{S3, S3Request, S3Response, S3Result, s3_error};
 use s3s_aws::Proxy;
 use tracing::{debug, error, warn};
 
-use crate::s3_cache::{AsyncS3Cache, CacheKey, CachedObject, CachedObjectBody};
+use crate::s3_cache::{CacheKey, CachedObject, CachedObjectBody, S3Cache};
 use crate::telemetry;
 
 use self::counter::CachingCounter;
@@ -22,7 +22,7 @@ mod counter;
 /// implementing the [`S3`] trait.
 pub struct CachingProxy<T = Proxy> {
     inner: T,
-    cache: Option<Arc<AsyncS3Cache>>,
+    cache: Option<Arc<S3Cache>>,
     max_cacheable_size: usize,
     counter: CachingCounter,
     /// Dry-run mode: the cache is populated and checked, but get_object always
@@ -39,7 +39,7 @@ impl<T> CachingProxy<T> {
     /// Set `dry_run` to `true` to validate cache correctness without serving cached data.
     pub fn new(
         inner: T,
-        cache: Option<Arc<AsyncS3Cache>>,
+        cache: Option<Arc<S3Cache>>,
         max_cacheable_size: usize,
         dry_run: bool,
     ) -> Self {
@@ -74,7 +74,7 @@ impl CachingProxy<Proxy> {
     /// This is equivalent to calling [`new`](Self::new) with a [`Proxy`] type parameter.
     pub fn from_aws_proxy(
         inner: Proxy,
-        cache: Option<Arc<AsyncS3Cache>>,
+        cache: Option<Arc<S3Cache>>,
         max_cacheable_size: usize,
         dry_run: bool,
     ) -> Self {

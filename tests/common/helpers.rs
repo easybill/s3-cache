@@ -1,6 +1,6 @@
 use bytes::Bytes;
 use http::{HeaderMap, Method, Uri};
-use s3_cache::{AsyncS3Cache, CacheKey};
+use s3_cache::{S3Cache, CacheKey};
 use s3s::dto::*;
 use s3s::{Body, S3Request};
 use std::sync::Arc;
@@ -175,8 +175,8 @@ pub fn build_copy_request(
 }
 
 /// Create a test cache with specified parameters
-pub fn create_test_cache(max_entries: usize, max_size: usize, ttl_secs: u64) -> Arc<AsyncS3Cache> {
-    Arc::new(AsyncS3Cache::new(
+pub fn create_test_cache(max_entries: usize, max_size: usize, ttl_secs: u64) -> Arc<S3Cache> {
+    Arc::new(S3Cache::new(
         max_entries,
         max_size,
         Duration::from_secs(ttl_secs),
@@ -185,7 +185,7 @@ pub fn create_test_cache(max_entries: usize, max_size: usize, ttl_secs: u64) -> 
 }
 
 /// Check if cache contains an entry
-pub async fn assert_cache_contains(cache: &Arc<AsyncS3Cache>, bucket: &str, key: &str) {
+pub async fn assert_cache_contains(cache: &Arc<S3Cache>, bucket: &str, key: &str) {
     let cache_key = CacheKey::new(bucket.to_string(), key.to_string(), None, None);
     assert!(
         cache.get(&cache_key).await.is_some(),
@@ -196,7 +196,7 @@ pub async fn assert_cache_contains(cache: &Arc<AsyncS3Cache>, bucket: &str, key:
 }
 
 /// Check if cache does not contain an entry
-pub async fn assert_cache_missing(cache: &Arc<AsyncS3Cache>, bucket: &str, key: &str) {
+pub async fn assert_cache_missing(cache: &Arc<S3Cache>, bucket: &str, key: &str) {
     let cache_key = CacheKey::new(bucket.to_string(), key.to_string(), None, None);
     assert!(
         cache.get(&cache_key).await.is_none(),

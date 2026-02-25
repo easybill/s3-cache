@@ -14,24 +14,24 @@ pub use self::object::{CachedObject, CachedObjectBody};
 mod key;
 mod object;
 
-/// Statistics snapshot for [`AsyncS3Cache`].
+/// Statistics snapshot for [`S3Cache`].
 ///
 /// Provides information about cache utilization in terms of both entry count and byte size.
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
-pub struct AsyncS3CacheStatistics {
+pub struct S3CacheStatistics {
     pub len: usize,
     pub max_len: usize,
     pub size: usize,
     pub max_size: usize,
 }
 
-struct AsyncS3CacheShard {
+struct S3CacheShard {
     cache: RwLock<FifoCache<CacheKey, CachedObject>>,
     /// Per-shard size tracked atomically so other shards can read it without locking.
     size: AtomicUsize,
 }
 
-impl AsyncS3CacheShard {
+impl S3CacheShard {
     fn new(max_len: usize) -> Self {
         Self {
             cache: RwLock::new(FifoCache::with_max_len(max_len)),
@@ -125,9 +125,9 @@ impl AsyncS3CacheShard {
 /// - Global tracking: `AtomicU64 + AtomicUsize + Duration + usize` (~32 bytes total)
 /// - See [`FifoCache`](crate::FifoCache) documentation for detailed formula explanation
 ///
-/// Note: The `S3` in `AsyncS3Cache` refers to Amazon's `S3` web service.
-pub struct AsyncS3Cache {
-    shards: Vec<AsyncS3CacheShard>,
+/// Note: The `S3` in `S3Cache` refers to Amazon's `S3` web service.
+pub struct S3Cache {
+    shards: Vec<S3CacheShard>,
     // Time-to-live
     ttl: Duration,
     last_stats_report: AtomicU64,
@@ -138,17 +138,17 @@ pub struct AsyncS3Cache {
     global_size: AtomicUsize,
 }
 
-impl AsyncS3Cache {
+impl S3Cache {
     /// Creates a new async S3 cache with the specified configuration.
     ///
     /// The cache distributes entries across `num_shards` shards for concurrent access.
     /// Each shard has its own lock, allowing parallel operations on different keys.
     ///
     /// ```
-    /// use s3_cache::AsyncS3Cache;
+    /// use s3_cache::S3Cache;
     /// use std::time::Duration;
     ///
-    /// let cache = AsyncS3Cache::new(
+    /// let cache = S3Cache::new(
     ///     10_000,                    // max 10,000 entries
     ///     1_073_741_824,             // max 1 GB total size
     ///     Duration::from_secs(3600), // 1 hour TTL
@@ -165,7 +165,7 @@ impl AsyncS3Cache {
             .map(|i| {
                 // Distribute remainder across first `remainder` shards.
                 let shard_max_len = per_shard_max_len + if i < remainder { 1 } else { 0 };
-                AsyncS3CacheShard::new(shard_max_len)
+                S3CacheShard::new(shard_max_len)
             })
             .collect();
 
@@ -187,7 +187,7 @@ impl AsyncS3Cache {
     }
 
     #[inline]
-    fn shard_for(&self, key: &CacheKey) -> &AsyncS3CacheShard {
+    fn shard_for(&self, key: &CacheKey) -> &S3CacheShard {
         &self.shards[self.shard_index(key)]
     }
 
@@ -252,10 +252,10 @@ impl AsyncS3Cache {
     /// Expired entries are automatically removed when accessed.
     ///
     /// ```no_run
-    /// # use s3_cache::{AsyncS3Cache, CacheKey};
+    /// # use s3_cache::{S3Cache, CacheKey};
     /// # use std::time::Duration;
     /// # async fn example() {
-    /// # let cache = AsyncS3Cache::new(100, 1024, Duration::from_secs(3600), 4);
+    /// # let cache = S3Cache::new(100, 1024, Duration::from_secs(3600), 4);
     /// let key = CacheKey::new(
     ///     "bucket".to_string(),
     ///     "key".to_string(),
@@ -457,7 +457,7 @@ impl AsyncS3Cache {
                 total_max_len += cache.max_len();
             }
 
-            let stats = AsyncS3CacheStatistics {
+            let stats = S3CacheStatistics {
                 len: total_len,
                 max_len: total_max_len,
                 size: self.global_size.load(Ordering::Relaxed),

@@ -3,7 +3,7 @@ mod common;
 use bytes::Bytes;
 use common::MockS3Backend;
 use common::helpers::*;
-use s3_cache::proxy_service::CachingProxy;
+use s3_cache::proxy_service::{CachingProxy, SharedCachingProxy};
 use s3s::S3;
 
 #[tokio::test]
@@ -14,7 +14,7 @@ async fn put_invalidates_cache() {
         .await;
 
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
+    let proxy = SharedCachingProxy::new(CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false));
 
     // First GET: populate cache
     let req = build_get_request("test-bucket", "file.txt", None);
@@ -48,7 +48,7 @@ async fn delete_invalidates_cache() {
         .await;
 
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
+    let proxy = SharedCachingProxy::new(CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false));
 
     // GET: populate cache
     let req = build_get_request("test-bucket", "deleteme.txt", None);
@@ -77,7 +77,7 @@ async fn delete_objects_invalidates_all() {
     }
 
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
+    let proxy = SharedCachingProxy::new(CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false));
 
     // GET all objects: populate cache
     for i in 0..5 {
@@ -112,7 +112,7 @@ async fn copy_invalidates_destination() {
         .await;
 
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
+    let proxy = SharedCachingProxy::new(CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false));
 
     // GET destination: populate cache
     let req = build_get_request("test-bucket", "dest.txt", None);
@@ -143,7 +143,7 @@ async fn invalidation_removes_all_ranges() {
         .await;
 
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
+    let proxy = SharedCachingProxy::new(CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false));
 
     // GET full object
     let req = build_get_request("test-bucket", "ranged.txt", None);
@@ -181,7 +181,7 @@ async fn put_only_invalidates_target_key() {
         .await;
 
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
+    let proxy = SharedCachingProxy::new(CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false));
 
     // GET both files
     let req = build_get_request("test-bucket", "file1.txt", None);

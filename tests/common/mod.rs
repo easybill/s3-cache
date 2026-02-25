@@ -221,4 +221,194 @@ impl S3 for MockS3Backend {
         let output = CopyObjectOutput::default();
         Ok(S3Response::new(output))
     }
+
+    async fn create_bucket(
+        &self,
+        req: S3Request<CreateBucketInput>,
+    ) -> S3Result<S3Response<CreateBucketOutput>> {
+        let input = req.input;
+        let mut storage = self.storage.lock().await;
+        storage.entry(input.bucket).or_insert_with(HashMap::new);
+        Ok(S3Response::new(CreateBucketOutput::default()))
+    }
+
+    async fn delete_bucket(
+        &self,
+        req: S3Request<DeleteBucketInput>,
+    ) -> S3Result<S3Response<DeleteBucketOutput>> {
+        let input = req.input;
+        let mut storage = self.storage.lock().await;
+        storage.remove(&input.bucket);
+        Ok(S3Response::new(DeleteBucketOutput::default()))
+    }
+
+    async fn head_bucket(
+        &self,
+        req: S3Request<HeadBucketInput>,
+    ) -> S3Result<S3Response<HeadBucketOutput>> {
+        let input = req.input;
+        let storage = self.storage.lock().await;
+        if storage.contains_key(&input.bucket) {
+            Ok(S3Response::new(HeadBucketOutput::default()))
+        } else {
+            Err(s3_error!(NoSuchBucket, "Bucket not found"))
+        }
+    }
+
+    async fn list_buckets(
+        &self,
+        _req: S3Request<ListBucketsInput>,
+    ) -> S3Result<S3Response<ListBucketsOutput>> {
+        let storage = self.storage.lock().await;
+        let buckets: Vec<Bucket> = storage
+            .keys()
+            .map(|name| Bucket {
+                creation_date: None,
+                name: Some(name.clone()),
+                bucket_region: None,
+            })
+            .collect();
+        Ok(S3Response::new(ListBucketsOutput {
+            buckets: Some(buckets),
+            owner: None,
+            continuation_token: None,
+            prefix: None,
+        }))
+    }
+
+    async fn list_objects(
+        &self,
+        req: S3Request<ListObjectsInput>,
+    ) -> S3Result<S3Response<ListObjectsOutput>> {
+        let input = req.input;
+        let storage = self.storage.lock().await;
+        let bucket_map = storage
+            .get(&input.bucket)
+            .ok_or_else(|| s3_error!(NoSuchBucket, "Bucket not found"))?;
+
+        let contents: Vec<Object> = bucket_map
+            .keys()
+            .map(|key| Object {
+                key: Some(key.clone()),
+                ..Default::default()
+            })
+            .collect();
+
+        Ok(S3Response::new(ListObjectsOutput {
+            contents: Some(contents),
+            name: Some(input.bucket),
+            ..Default::default()
+        }))
+    }
+
+    async fn list_objects_v2(
+        &self,
+        req: S3Request<ListObjectsV2Input>,
+    ) -> S3Result<S3Response<ListObjectsV2Output>> {
+        let input = req.input;
+        let storage = self.storage.lock().await;
+        let bucket_map = storage
+            .get(&input.bucket)
+            .ok_or_else(|| s3_error!(NoSuchBucket, "Bucket not found"))?;
+
+        let contents: Vec<Object> = bucket_map
+            .keys()
+            .map(|key| Object {
+                key: Some(key.clone()),
+                ..Default::default()
+            })
+            .collect();
+
+        Ok(S3Response::new(ListObjectsV2Output {
+            contents: Some(contents),
+            name: Some(input.bucket),
+            ..Default::default()
+        }))
+    }
+
+    async fn get_bucket_location(
+        &self,
+        req: S3Request<GetBucketLocationInput>,
+    ) -> S3Result<S3Response<GetBucketLocationOutput>> {
+        let input = req.input;
+        let storage = self.storage.lock().await;
+        if storage.contains_key(&input.bucket) {
+            Ok(S3Response::new(GetBucketLocationOutput::default()))
+        } else {
+            Err(s3_error!(NoSuchBucket, "Bucket not found"))
+        }
+    }
+
+    async fn create_multipart_upload(
+        &self,
+        req: S3Request<CreateMultipartUploadInput>,
+    ) -> S3Result<S3Response<CreateMultipartUploadOutput>> {
+        let input = req.input;
+        Ok(S3Response::new(CreateMultipartUploadOutput {
+            bucket: Some(input.bucket),
+            key: Some(input.key),
+            upload_id: Some("test-upload-id".to_string()),
+            ..Default::default()
+        }))
+    }
+
+    async fn complete_multipart_upload(
+        &self,
+        req: S3Request<CompleteMultipartUploadInput>,
+    ) -> S3Result<S3Response<CompleteMultipartUploadOutput>> {
+        let input = req.input;
+        Ok(S3Response::new(CompleteMultipartUploadOutput {
+            bucket: Some(input.bucket),
+            key: Some(input.key),
+            ..Default::default()
+        }))
+    }
+
+    async fn abort_multipart_upload(
+        &self,
+        _req: S3Request<AbortMultipartUploadInput>,
+    ) -> S3Result<S3Response<AbortMultipartUploadOutput>> {
+        Ok(S3Response::new(AbortMultipartUploadOutput::default()))
+    }
+
+    async fn list_multipart_uploads(
+        &self,
+        req: S3Request<ListMultipartUploadsInput>,
+    ) -> S3Result<S3Response<ListMultipartUploadsOutput>> {
+        let input = req.input;
+        Ok(S3Response::new(ListMultipartUploadsOutput {
+            bucket: Some(input.bucket),
+            ..Default::default()
+        }))
+    }
+
+    async fn list_parts(
+        &self,
+        req: S3Request<ListPartsInput>,
+    ) -> S3Result<S3Response<ListPartsOutput>> {
+        let input = req.input;
+        Ok(S3Response::new(ListPartsOutput {
+            bucket: Some(input.bucket),
+            key: Some(input.key),
+            ..Default::default()
+        }))
+    }
+
+    async fn upload_part(
+        &self,
+        req: S3Request<UploadPartInput>,
+    ) -> S3Result<S3Response<UploadPartOutput>> {
+        let _input = req.input;
+        Ok(S3Response::new(UploadPartOutput {
+            e_tag: Some(s3s::dto::ETag::Strong("test-etag".to_string())),
+            ..Default::default()
+        }))
+    }
+
+    async fn upload_part_copy(
+        &self,
+        _req: S3Request<UploadPartCopyInput>,
+    ) -> S3Result<S3Response<UploadPartCopyOutput>> {
+        Ok(S3Response::new(UploadPartCopyOutput::default()))
+    }
 }

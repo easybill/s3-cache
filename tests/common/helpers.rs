@@ -224,3 +224,316 @@ pub async fn extract_body(body: Option<StreamingBlob>) -> Bytes {
         None => Bytes::new(),
     }
 }
+
+/// Build a CreateBucket request
+pub fn build_create_bucket_request(bucket: &str) -> S3Request<CreateBucketInput> {
+    S3Request {
+        input: CreateBucketInput {
+            bucket: bucket.to_string(),
+            ..Default::default()
+        },
+        method: Method::PUT,
+        uri: Uri::from_static("/"),
+        headers: HeaderMap::new(),
+        extensions: Default::default(),
+        credentials: None,
+        region: None,
+        service: None,
+        trailing_headers: None,
+    }
+}
+
+/// Build a DeleteBucket request
+pub fn build_delete_bucket_request(bucket: &str) -> S3Request<DeleteBucketInput> {
+    S3Request {
+        input: DeleteBucketInput {
+            bucket: bucket.to_string(),
+            expected_bucket_owner: None,
+        },
+        method: Method::DELETE,
+        uri: Uri::from_static("/"),
+        headers: HeaderMap::new(),
+        extensions: Default::default(),
+        credentials: None,
+        region: None,
+        service: None,
+        trailing_headers: None,
+    }
+}
+
+/// Build a HeadBucket request
+pub fn build_head_bucket_request(bucket: &str) -> S3Request<HeadBucketInput> {
+    S3Request {
+        input: HeadBucketInput {
+            bucket: bucket.to_string(),
+            expected_bucket_owner: None,
+        },
+        method: Method::HEAD,
+        uri: Uri::from_static("/"),
+        headers: HeaderMap::new(),
+        extensions: Default::default(),
+        credentials: None,
+        region: None,
+        service: None,
+        trailing_headers: None,
+    }
+}
+
+/// Build a ListBuckets request
+pub fn build_list_buckets_request() -> S3Request<ListBucketsInput> {
+    S3Request {
+        input: ListBucketsInput::default(),
+        method: Method::GET,
+        uri: Uri::from_static("/"),
+        headers: HeaderMap::new(),
+        extensions: Default::default(),
+        credentials: None,
+        region: None,
+        service: None,
+        trailing_headers: None,
+    }
+}
+
+/// Build a ListObjects request
+pub fn build_list_objects_request(bucket: &str) -> S3Request<ListObjectsInput> {
+    S3Request {
+        input: ListObjectsInput {
+            bucket: bucket.to_string(),
+            ..Default::default()
+        },
+        method: Method::GET,
+        uri: Uri::from_static("/"),
+        headers: HeaderMap::new(),
+        extensions: Default::default(),
+        credentials: None,
+        region: None,
+        service: None,
+        trailing_headers: None,
+    }
+}
+
+/// Build a ListObjectsV2 request
+pub fn build_list_objects_v2_request(bucket: &str) -> S3Request<ListObjectsV2Input> {
+    S3Request {
+        input: ListObjectsV2Input {
+            bucket: bucket.to_string(),
+            ..Default::default()
+        },
+        method: Method::GET,
+        uri: Uri::from_static("/"),
+        headers: HeaderMap::new(),
+        extensions: Default::default(),
+        credentials: None,
+        region: None,
+        service: None,
+        trailing_headers: None,
+    }
+}
+
+/// Build a GetBucketLocation request
+pub fn build_get_bucket_location_request(bucket: &str) -> S3Request<GetBucketLocationInput> {
+    S3Request {
+        input: GetBucketLocationInput {
+            bucket: bucket.to_string(),
+            expected_bucket_owner: None,
+        },
+        method: Method::GET,
+        uri: Uri::from_static("/"),
+        headers: HeaderMap::new(),
+        extensions: Default::default(),
+        credentials: None,
+        region: None,
+        service: None,
+        trailing_headers: None,
+    }
+}
+
+/// Build a CreateMultipartUpload request
+pub fn build_create_multipart_upload_request(
+    bucket: &str,
+    key: &str,
+) -> S3Request<CreateMultipartUploadInput> {
+    S3Request {
+        input: CreateMultipartUploadInput {
+            bucket: bucket.to_string(),
+            key: key.to_string(),
+            ..Default::default()
+        },
+        method: Method::POST,
+        uri: Uri::from_static("/"),
+        headers: HeaderMap::new(),
+        extensions: Default::default(),
+        credentials: None,
+        region: None,
+        service: None,
+        trailing_headers: None,
+    }
+}
+
+/// Build a CompleteMultipartUpload request
+pub fn build_complete_multipart_upload_request(
+    bucket: &str,
+    key: &str,
+    upload_id: &str,
+) -> S3Request<CompleteMultipartUploadInput> {
+    S3Request {
+        input: CompleteMultipartUploadInput {
+            bucket: bucket.to_string(),
+            key: key.to_string(),
+            upload_id: upload_id.to_string(),
+            ..Default::default()
+        },
+        method: Method::POST,
+        uri: Uri::from_static("/"),
+        headers: HeaderMap::new(),
+        extensions: Default::default(),
+        credentials: None,
+        region: None,
+        service: None,
+        trailing_headers: None,
+    }
+}
+
+/// Build an AbortMultipartUpload request
+pub fn build_abort_multipart_upload_request(
+    bucket: &str,
+    key: &str,
+    upload_id: &str,
+) -> S3Request<AbortMultipartUploadInput> {
+    S3Request {
+        input: AbortMultipartUploadInput {
+            bucket: bucket.to_string(),
+            key: key.to_string(),
+            upload_id: upload_id.to_string(),
+            expected_bucket_owner: None,
+            request_payer: None,
+            if_match_initiated_time: None,
+        },
+        method: Method::DELETE,
+        uri: Uri::from_static("/"),
+        headers: HeaderMap::new(),
+        extensions: Default::default(),
+        credentials: None,
+        region: None,
+        service: None,
+        trailing_headers: None,
+    }
+}
+
+/// Build a ListMultipartUploads request
+pub fn build_list_multipart_uploads_request(bucket: &str) -> S3Request<ListMultipartUploadsInput> {
+    S3Request {
+        input: ListMultipartUploadsInput {
+            bucket: bucket.to_string(),
+            ..Default::default()
+        },
+        method: Method::GET,
+        uri: Uri::from_static("/"),
+        headers: HeaderMap::new(),
+        extensions: Default::default(),
+        credentials: None,
+        region: None,
+        service: None,
+        trailing_headers: None,
+    }
+}
+
+/// Build a ListParts request
+pub fn build_list_parts_request(
+    bucket: &str,
+    key: &str,
+    upload_id: &str,
+) -> S3Request<ListPartsInput> {
+    S3Request {
+        input: ListPartsInput {
+            bucket: bucket.to_string(),
+            key: key.to_string(),
+            upload_id: upload_id.to_string(),
+            ..Default::default()
+        },
+        method: Method::GET,
+        uri: Uri::from_static("/"),
+        headers: HeaderMap::new(),
+        extensions: Default::default(),
+        credentials: None,
+        region: None,
+        service: None,
+        trailing_headers: None,
+    }
+}
+
+/// Build an UploadPart request
+pub fn build_upload_part_request(
+    bucket: &str,
+    key: &str,
+    upload_id: &str,
+    part_number: i32,
+    body: Bytes,
+) -> S3Request<UploadPartInput> {
+    S3Request {
+        input: UploadPartInput {
+            bucket: bucket.to_string(),
+            key: key.to_string(),
+            upload_id: upload_id.to_string(),
+            part_number,
+            body: Some(StreamingBlob::from(Body::from(body))),
+            ..Default::default()
+        },
+        method: Method::PUT,
+        uri: Uri::from_static("/"),
+        headers: HeaderMap::new(),
+        extensions: Default::default(),
+        credentials: None,
+        region: None,
+        service: None,
+        trailing_headers: None,
+    }
+}
+
+/// Build an UploadPartCopy request
+pub fn build_upload_part_copy_request(
+    src_bucket: &str,
+    src_key: &str,
+    dest_bucket: &str,
+    dest_key: &str,
+    upload_id: &str,
+    part_number: i32,
+) -> S3Request<UploadPartCopyInput> {
+    let copy_source = CopySource::Bucket {
+        bucket: src_bucket.to_string().into(),
+        key: src_key.to_string().into(),
+        version_id: None,
+    };
+
+    S3Request {
+        input: UploadPartCopyInput {
+            bucket: dest_bucket.to_string(),
+            key: dest_key.to_string(),
+            copy_source,
+            upload_id: upload_id.to_string(),
+            part_number,
+            copy_source_if_match: None,
+            copy_source_if_modified_since: None,
+            copy_source_if_none_match: None,
+            copy_source_if_unmodified_since: None,
+            copy_source_range: None,
+            copy_source_sse_customer_algorithm: None,
+            copy_source_sse_customer_key: None,
+            copy_source_sse_customer_key_md5: None,
+            expected_bucket_owner: None,
+            expected_source_bucket_owner: None,
+            request_payer: None,
+            sse_customer_algorithm: None,
+            sse_customer_key: None,
+            sse_customer_key_md5: None,
+        },
+        method: Method::PUT,
+        uri: Uri::from_static("/"),
+        headers: HeaderMap::new(),
+        extensions: Default::default(),
+        credentials: None,
+        region: None,
+        service: None,
+        trailing_headers: None,
+    }
+}

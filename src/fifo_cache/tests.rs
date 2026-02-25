@@ -7,7 +7,7 @@ struct TestData {
 
 #[test]
 fn basic_insertion_and_retrieval() {
-    let mut cache: S3FifoCache<String, TestData> = S3FifoCache::new(1000, 10000);
+    let mut cache: FifoCache<String, TestData> = FifoCache::new(1000, 10000);
 
     let key1 = "test_key_1".to_string();
     let data1 = TestData { size: 500 };
@@ -22,7 +22,7 @@ fn basic_insertion_and_retrieval() {
 
 #[test]
 fn remove() {
-    let mut cache: S3FifoCache<String, TestData> = S3FifoCache::new(1000, 10000);
+    let mut cache: FifoCache<String, TestData> = FifoCache::new(1000, 10000);
 
     let key = "test_key".to_string();
     let data = TestData { size: 500 };
@@ -40,7 +40,7 @@ fn remove() {
 
 #[test]
 fn retain() {
-    let mut cache: S3FifoCache<String, TestData> = S3FifoCache::new(1000, 10000);
+    let mut cache: FifoCache<String, TestData> = FifoCache::new(1000, 10000);
 
     for i in 0..5 {
         let key = format!("prefix_a_{i}");
@@ -62,7 +62,7 @@ fn retain() {
 
 #[test]
 fn cache_eviction_by_len() {
-    let mut cache: S3FifoCache<String, TestData> = S3FifoCache::with_max_len(10);
+    let mut cache: FifoCache<String, TestData> = FifoCache::with_max_len(10);
 
     for i in 0..20 {
         let key = format!("key_{i}");
@@ -76,7 +76,7 @@ fn cache_eviction_by_len() {
 #[test]
 fn small_to_main_promotion() {
     // small=2, main=3 → total capacity 5
-    let mut cache: S3FifoCache<String, u32> = S3FifoCache::new(2, 3);
+    let mut cache: FifoCache<String, u32> = FifoCache::new(2, 3);
 
     // Insert A, B (fill small)
     cache.insert("A".into(), 1);
@@ -101,7 +101,7 @@ fn small_to_main_promotion() {
 #[test]
 fn ghost_list_promotion() {
     // small=2, main=3 → total 5
-    let mut cache: S3FifoCache<String, u32> = S3FifoCache::new(2, 3);
+    let mut cache: FifoCache<String, u32> = FifoCache::new(2, 3);
 
     // Fill cache with 5 items (A..E)
     for (i, name) in ["A", "B", "C", "D", "E"].iter().enumerate() {
@@ -126,7 +126,7 @@ fn ghost_list_promotion() {
 #[test]
 fn fifo_reinsertion_in_main() {
     // small=1, main=3 → total 4
-    let mut cache: S3FifoCache<String, u32> = S3FifoCache::new(1, 3);
+    let mut cache: FifoCache<String, u32> = FifoCache::new(1, 3);
 
     // Insert A (goes to small)
     cache.insert("A".into(), 1);
@@ -163,7 +163,7 @@ fn fifo_reinsertion_in_main() {
 #[test]
 fn eviction_after_remove_tombstones() {
     // small=3, main=7 → total 10
-    let mut cache: S3FifoCache<String, u32> = S3FifoCache::new(3, 7);
+    let mut cache: FifoCache<String, u32> = FifoCache::new(3, 7);
 
     // Fill cache
     for i in 0..10 {
@@ -193,7 +193,7 @@ fn eviction_after_remove_tombstones() {
 #[test]
 fn eviction_after_retain_tombstones() {
     // small=3, main=7 → total 10
-    let mut cache: S3FifoCache<String, u32> = S3FifoCache::new(3, 7);
+    let mut cache: FifoCache<String, u32> = FifoCache::new(3, 7);
 
     // Fill cache
     for i in 0..10 {
@@ -225,7 +225,7 @@ fn eviction_after_retain_tombstones() {
 fn no_panic_on_main_reinsertion() {
     // Regression test for Bug 1: pop_from_main_impl must loop.
     // With small=1 and main=3, fill main with accessed items, then trigger eviction.
-    let mut cache: S3FifoCache<String, u32> = S3FifoCache::new(1, 3);
+    let mut cache: FifoCache<String, u32> = FifoCache::new(1, 3);
 
     // Insert and promote items into main
     cache.insert("A".into(), 1);
@@ -249,7 +249,7 @@ fn no_panic_on_main_reinsertion() {
 #[test]
 fn small_queue_filters_one_hit_wonders() {
     // small=2, main=8 → total 10
-    let mut cache: S3FifoCache<String, u32> = S3FifoCache::new(2, 8);
+    let mut cache: FifoCache<String, u32> = FifoCache::new(2, 8);
 
     // Insert 20 unique keys, never accessing any of them again (one-hit wonders).
     // They should flow through small and get evicted without reaching main.
@@ -278,7 +278,7 @@ fn small_queue_filters_one_hit_wonders() {
 
 #[test]
 fn cache_len_invariant() {
-    let mut cache: S3FifoCache<String, u32> = S3FifoCache::new(3, 7);
+    let mut cache: FifoCache<String, u32> = FifoCache::new(3, 7);
 
     // Interleave inserts, removes, retains, and evictions
     for i in 0u32..50 {

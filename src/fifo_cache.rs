@@ -14,7 +14,7 @@ type ValuesMap<K, V> = HashMap<K, ValueEntry<V>>;
 
 /// S3-FIFO cache: a cache that uses the S3-FIFO eviction strategy.
 ///
-/// Note: The `S3` in `S3FifoCache` refers to `S3-FIFO`'s three
+/// Note: The `S3` in `FifoCache` refers to `S3-FIFO`'s three
 /// internal static queues, not to Amazon's `S3` web service.
 ///
 /// # Memory Estimates
@@ -72,7 +72,7 @@ type ValuesMap<K, V> = HashMap<K, ValueEntry<V>>;
 /// // MAX = N * (4*8 + 8 + 1) = 41N bytes
 /// // Note: The actual String data is allocated once; only Arc pointers are duplicated
 /// ```
-pub struct S3FifoCache<K, V> {
+pub struct FifoCache<K, V> {
     values: ValuesMap<K, V>,
 
     // Fixed size: `N / 10`
@@ -83,7 +83,7 @@ pub struct S3FifoCache<K, V> {
     ghost: GhostList<K>,
 }
 
-impl<K: Clone + Eq + Hash, V> S3FifoCache<K, V> {
+impl<K: Clone + Eq + Hash, V> FifoCache<K, V> {
     /// The scale factor used to partition capacity between small and main queues.
     ///
     /// A value of 10 means the main queue gets 10x more capacity than the small queue.
@@ -95,9 +95,9 @@ impl<K: Clone + Eq + Hash, V> S3FifoCache<K, V> {
     /// factor of 10:1. For small caches (≤20 entries), more aggressive partitioning is used.
     ///
     /// ```
-    /// use s3_cache::S3FifoCache;
+    /// use s3_cache::FifoCache;
     ///
-    /// let cache: S3FifoCache<String, Vec<u8>> = S3FifoCache::with_max_len(100);
+    /// let cache: FifoCache<String, Vec<u8>> = FifoCache::with_max_len(100);
     /// assert_eq!(cache.max_len(), 100);
     /// ```
     pub fn with_max_len(max_len: usize) -> Self {
@@ -121,9 +121,9 @@ impl<K: Clone + Eq + Hash, V> S3FifoCache<K, V> {
     /// For most use cases, [`with_max_len`](Self::with_max_len) is recommended.
     ///
     /// ```
-    /// use s3_cache::S3FifoCache;
+    /// use s3_cache::FifoCache;
     ///
-    /// let cache: S3FifoCache<String, Vec<u8>> = S3FifoCache::new(10, 90);
+    /// let cache: FifoCache<String, Vec<u8>> = FifoCache::new(10, 90);
     /// ```
     pub fn new(max_small_len: usize, max_main_len: usize) -> Self {
         let values = HashMap::new();
@@ -182,9 +182,9 @@ impl<K: Clone + Eq + Hash, V> S3FifoCache<K, V> {
     /// Returns the previous value if the key already existed.
     ///
     /// ```
-    /// use s3_cache::S3FifoCache;
+    /// use s3_cache::FifoCache;
     ///
-    /// let mut cache = S3FifoCache::with_max_len(2);
+    /// let mut cache = FifoCache::with_max_len(2);
     /// assert_eq!(cache.insert("key1".to_string(), "value1".to_string()), None);
     /// assert_eq!(cache.insert("key1".to_string(), "updated".to_string()), Some("value1".to_string()));
     /// ```
@@ -224,9 +224,9 @@ impl<K: Clone + Eq + Hash, V> S3FifoCache<K, V> {
     /// Increments the internal frequency counter, affecting eviction decisions.
     ///
     /// ```
-    /// use s3_cache::S3FifoCache;
+    /// use s3_cache::FifoCache;
     ///
-    /// let mut cache = S3FifoCache::with_max_len(10);
+    /// let mut cache = FifoCache::with_max_len(10);
     /// cache.insert("key1".to_string(), "value1".to_string());
     /// assert_eq!(cache.get("key1"), Some(&"value1".to_string()));
     /// ```
@@ -244,9 +244,9 @@ impl<K: Clone + Eq + Hash, V> S3FifoCache<K, V> {
     /// Removes a key from the cache, returning its value if present.
     ///
     /// ```
-    /// use s3_cache::S3FifoCache;
+    /// use s3_cache::FifoCache;
     ///
-    /// let mut cache = S3FifoCache::with_max_len(10);
+    /// let mut cache = FifoCache::with_max_len(10);
     /// cache.insert("key1".to_string(), "value1".to_string());
     /// assert_eq!(cache.remove(&"key1".to_string()), Some("value1".to_string()));
     /// assert_eq!(cache.remove(&"key1".to_string()), None);
@@ -264,9 +264,9 @@ impl<K: Clone + Eq + Hash, V> S3FifoCache<K, V> {
     /// The predicate receives mutable references, allowing in-place value modifications.
     ///
     /// ```
-    /// use s3_cache::S3FifoCache;
+    /// use s3_cache::FifoCache;
     ///
-    /// let mut cache = S3FifoCache::with_max_len(10);
+    /// let mut cache = FifoCache::with_max_len(10);
     /// cache.insert("keep".to_string(), 100);
     /// cache.insert("remove".to_string(), 50);
     ///

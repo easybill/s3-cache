@@ -5,7 +5,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use tokio::sync::RwLock;
 
-use crate::S3FifoCache;
+use crate::FifoCache;
 use crate::telemetry;
 
 pub use self::key::CacheKey;
@@ -26,7 +26,7 @@ pub struct AsyncS3CacheStatistics {
 }
 
 struct AsyncS3CacheShard {
-    cache: RwLock<S3FifoCache<CacheKey, CachedObject>>,
+    cache: RwLock<FifoCache<CacheKey, CachedObject>>,
     /// Per-shard size tracked atomically so other shards can read it without locking.
     size: AtomicUsize,
 }
@@ -34,20 +34,20 @@ struct AsyncS3CacheShard {
 impl AsyncS3CacheShard {
     fn new(max_len: usize) -> Self {
         Self {
-            cache: RwLock::new(S3FifoCache::with_max_len(max_len)),
+            cache: RwLock::new(FifoCache::with_max_len(max_len)),
             size: AtomicUsize::new(0),
         }
     }
 }
 
-/// Async sharded wrapper around `S3FifoCache` for use with tokio.
+/// Async sharded wrapper around `FifoCache` for use with tokio.
 ///
 /// Keys are distributed across shards by hashing, each guarded by its own
 /// `RwLock`. All shards share a single global size budget tracked via atomics.
 ///
 /// # Memory Estimates
 ///
-/// This cache uses `S3FifoCache<CacheKey, CachedObject>` internally, where `CacheKey`
+/// This cache uses `FifoCache<CacheKey, CachedObject>` internally, where `CacheKey`
 /// wraps `Arc<CacheKeyState>` for efficient memory sharing.
 ///
 /// ## Per-Entry Memory Breakdown
@@ -123,7 +123,7 @@ impl AsyncS3CacheShard {
 /// Beyond per-entry costs, the cache includes:
 /// - Sharding overhead: `num_shards × (RwLock + AtomicUsize)` (~48 bytes per shard)
 /// - Global tracking: `AtomicU64 + AtomicUsize + Duration + usize` (~32 bytes total)
-/// - See [`S3FifoCache`](crate::S3FifoCache) documentation for detailed formula explanation
+/// - See [`FifoCache`](crate::FifoCache) documentation for detailed formula explanation
 ///
 /// Note: The `S3` in `AsyncS3Cache` refers to Amazon's `S3` web service.
 pub struct AsyncS3Cache {

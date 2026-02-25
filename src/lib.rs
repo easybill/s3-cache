@@ -1,3 +1,39 @@
+//! # s3-cache
+//!
+//! A high-performance caching proxy for S3-compatible object storage services.
+//!
+//! This library implements an S3-FIFO cache with sharded async support, designed to
+//! reduce latency and bandwidth usage when accessing frequently-requested S3 objects.
+//!
+//! ## Features
+//!
+//! - **S3-FIFO Caching**: Uses the S3-FIFO eviction algorithm for improved cache hit rates
+//! - **Async/Sharded**: Lock-free sharded cache for high concurrency workloads
+//! - **Range Request Support**: Caches partial object reads (byte ranges)
+//! - **Cache Invalidation**: Automatic invalidation on PUT/DELETE operations
+//! - **Dry-run Mode**: Validate cache correctness without serving cached data
+//! - **Telemetry**: OpenTelemetry metrics and Prometheus support
+//!
+//! ## Example
+//!
+//! ```no_run
+//! use s3_cache::{Config, start_app};
+//! use std::collections::HashMap;
+//!
+//! #[tokio::main]
+//! async fn main() -> s3_cache::Result<()> {
+//!     let mut env = HashMap::new();
+//!     env.insert("UPSTREAM_ENDPOINT".to_string(), "http://s3.amazonaws.com".to_string());
+//!     env.insert("UPSTREAM_ACCESS_KEY_ID".to_string(), "your-key".to_string());
+//!     env.insert("UPSTREAM_SECRET_ACCESS_KEY".to_string(), "your-secret".to_string());
+//!     env.insert("CLIENT_ACCESS_KEY_ID".to_string(), "client-key".to_string());
+//!     env.insert("CLIENT_SECRET_ACCESS_KEY".to_string(), "client-secret".to_string());
+//!
+//!     let config = Config::from_env(&env);
+//!     start_app(config).await
+//! }
+//! ```
+
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -25,10 +61,48 @@ mod metrics_writer;
 pub mod proxy_service;
 mod telemetry;
 
+/// Result type alias using [`ApplicationError`] as the error type.
 pub type Result<T> = std::result::Result<T, ApplicationError>;
 
 static CARGO_CRATE_NAME: &str = env!("CARGO_CRATE_NAME");
 
+/// Starts the S3 caching proxy server.
+///
+/// This function initializes telemetry, connects to the upstream S3 service,
+/// creates the cache, and starts an HTTP server to handle S3 requests.
+///
+/// The server will run until it receives a SIGINT (Ctrl+C) signal, at which
+/// point it will perform a graceful shutdown with a 10-second timeout.
+///
+/// # Arguments
+///
+/// * `config` - Configuration for the proxy server
+///
+/// # Returns
+///
+/// Returns `Ok(())` on successful shutdown, or an error if startup or
+/// initialization fails.
+///
+/// # Example
+///
+/// ```no_run
+/// use s3_cache::{Config, start_app};
+/// use std::collections::HashMap;
+///
+/// # #[tokio::main]
+/// # async fn main() -> s3_cache::Result<()> {
+/// let mut env = HashMap::new();
+/// env.insert("UPSTREAM_ENDPOINT".to_string(), "http://localhost:9000".to_string());
+/// env.insert("UPSTREAM_ACCESS_KEY_ID".to_string(), "minioadmin".to_string());
+/// env.insert("UPSTREAM_SECRET_ACCESS_KEY".to_string(), "minioadmin".to_string());
+/// env.insert("CLIENT_ACCESS_KEY_ID".to_string(), "client".to_string());
+/// env.insert("CLIENT_SECRET_ACCESS_KEY".to_string(), "secret".to_string());
+///
+/// let config = Config::from_env(&env);
+/// start_app(config).await?;
+/// # Ok(())
+/// # }
+/// ```
 pub async fn start_app(config: Config) -> Result<()> {
     let (metrics_provider, logs_provider) = telemetry::initialize_telemetry(&config)?;
 

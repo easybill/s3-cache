@@ -9,7 +9,9 @@ use crate::S3FifoCache;
 use crate::cache::{CacheKey, CachedObject};
 use crate::telemetry;
 
-/// Statistics about the cache.
+/// Statistics snapshot for [`AsyncS3Cache`].
+///
+/// Provides information about cache utilization in terms of both entry count and byte size.
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 pub struct AsyncS3CacheStatistics {
     pub len: usize,
@@ -61,6 +63,22 @@ pub struct AsyncS3Cache {
 }
 
 impl AsyncS3Cache {
+    /// Creates a new async S3 cache with the specified configuration.
+    ///
+    /// The cache distributes entries across `num_shards` shards for concurrent access.
+    /// Each shard has its own lock, allowing parallel operations on different keys.
+    ///
+    /// ```
+    /// use s3_cache::AsyncS3Cache;
+    /// use std::time::Duration;
+    ///
+    /// let cache = AsyncS3Cache::new(
+    ///     10_000,                    // max 10,000 entries
+    ///     1_073_741_824,             // max 1 GB total size
+    ///     Duration::from_secs(3600), // 1 hour TTL
+    ///     16,                        // 16 shards
+    /// );
+    /// ```
     pub fn new(max_len: usize, max_size: usize, ttl: Duration, num_shards: usize) -> Self {
         assert!(num_shards > 0, "num_shards must be greater than 0");
 
@@ -97,11 +115,15 @@ impl AsyncS3Cache {
         &self.shards[self.shard_index(key)]
     }
 
+    /// Returns the time-to-live duration for cached entries.
     #[inline]
     pub fn ttl(&self) -> Duration {
         self.ttl
     }
 
+    /// Returns the current total number of entries across all shards.
+    ///
+    /// This operation acquires read locks on all shards sequentially.
     #[inline]
     pub async fn len(&self) -> usize {
         let mut total = 0;
@@ -112,6 +134,9 @@ impl AsyncS3Cache {
         total
     }
 
+    /// Returns `true` if all shards are empty.
+    ///
+    /// This operation acquires read locks on all shards sequentially.
     #[inline]
     pub async fn is_empty(&self) -> bool {
         for shard in &self.shards {
@@ -123,6 +148,9 @@ impl AsyncS3Cache {
         true
     }
 
+    /// Returns `true` if all shards are at maximum capacity.
+    ///
+    /// This operation acquires read locks on all shards sequentially.
     #[inline]
     pub async fn is_full(&self) -> bool {
         for shard in &self.shards {
@@ -134,15 +162,35 @@ impl AsyncS3Cache {
         true
     }
 
+    /// Returns `true` if the cache contains the specified key.
+    ///
+    /// Unlike [`get`](Self::get), this does not check for expiration.
     pub async fn contains_key(&self, key: &CacheKey) -> bool {
         let shard = self.shard_for(key);
         let cache = shard.cache.read().await;
         cache.contains_key(key)
     }
 
-    /// Attempt to get a cached object.
+    /// Gets a cached object if present and not expired.
     ///
-    /// Returns None if not found or expired.
+    /// Expired entries are automatically removed when accessed.
+    ///
+    /// ```no_run
+    /// # use s3_cache::{AsyncS3Cache, CacheKey};
+    /// # use std::time::Duration;
+    /// # async fn example() {
+    /// # let cache = AsyncS3Cache::new(100, 1024, Duration::from_secs(3600), 4);
+    /// let key = CacheKey::new(
+    ///     "bucket".to_string(),
+    ///     "key".to_string(),
+    ///     None,
+    ///     None,
+    /// );
+    /// if let Some(obj) = cache.get(&key).await {
+    ///     // Use cached object
+    /// }
+    /// # }
+    /// ```
     pub async fn get(&self, key: &CacheKey) -> Option<CachedObject> {
         let shard = self.shard_for(key);
 
@@ -160,7 +208,15 @@ impl AsyncS3Cache {
         None
     }
 
-    /// Insert a cached object.
+    /// Inserts a cached object.
+    ///
+    /// If the object doesn't fit within size limits after eviction attempts,
+    /// the insertion is skipped and `None` is returned.
+    ///
+    /// Evicts from the target shard first, then from other shards if needed to
+    /// satisfy the global size constraint.
+    ///
+    /// Returns the previous value if the key already existed.
     pub async fn insert(&self, key: CacheKey, value: CachedObject) -> Option<CachedObject> {
         let size = value.content_length();
         let shard_idx = self.shard_index(&key);
@@ -242,7 +298,7 @@ impl AsyncS3Cache {
         }
     }
 
-    /// Remove a specific cache entry.
+    /// Removes a cache entry, returning its value if present.
     pub async fn remove(&self, key: &CacheKey) -> Option<CachedObject> {
         let shard = self.shard_for(key);
         let mut cache = shard.cache.write().await;
@@ -258,10 +314,12 @@ impl AsyncS3Cache {
         removed
     }
 
-    /// Remove all entries matching a bucket and object key (all ranges).
+    /// Removes all cache entries for a given bucket and object key.
     ///
-    /// This scans all shards since different ranges of the same object may
-    /// hash to different shards.
+    /// This invalidates all cached ranges and versions of the object by scanning
+    /// all shards, since different ranges may hash to different shards.
+    ///
+    /// Returns the number of entries removed.
     pub async fn invalidate_object(&self, bucket: &str, object_key: &str) -> usize {
         let mut total_count: usize = 0;
 
@@ -293,9 +351,10 @@ impl AsyncS3Cache {
         total_count
     }
 
-    /// Get current cache statistics and report them as metrics.
+    /// Reports current cache statistics to telemetry.
     ///
-    /// Uses time-based throttling to avoid overhead on hot path.
+    /// Uses time-based throttling (1 second interval) to avoid overhead on hot paths.
+    /// Multiple concurrent calls within the throttle window will be no-ops.
     pub async fn report_stats(&self) {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)

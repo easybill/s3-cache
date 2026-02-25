@@ -4,6 +4,9 @@ use std::{
     net::SocketAddr,
 };
 
+/// Configuration for the S3 caching proxy server.
+///
+/// All settings can be loaded from environment variables via [`from_env`](Self::from_env).
 pub struct Config {
     pub listen_addr: SocketAddr,
     pub upstream_endpoint: String,
@@ -25,6 +28,34 @@ pub struct Config {
 }
 
 impl Config {
+    /// Loads configuration from environment variables.
+    ///
+    /// # Required environment variables
+    ///
+    /// - `UPSTREAM_ENDPOINT`: S3-compatible endpoint URL
+    /// - `UPSTREAM_ACCESS_KEY_ID`: Access key for upstream S3
+    /// - `UPSTREAM_SECRET_ACCESS_KEY`: Secret key for upstream S3
+    /// - `CLIENT_ACCESS_KEY_ID`: Access key for proxy clients
+    /// - `CLIENT_SECRET_ACCESS_KEY`: Secret key for proxy clients
+    ///
+    /// # Optional environment variables with defaults
+    ///
+    /// - `LISTEN_ADDR`: Proxy listen address (default: `0.0.0.0:8080`)
+    /// - `UPSTREAM_REGION`: AWS region (default: `us-east-1`)
+    /// - `CACHE_ENABLED`: Enable caching (default: `true`)
+    /// - `CACHE_DRYRUN`: Dry-run mode for cache validation (default: `false`)
+    /// - `CACHE_SHARDS`: Number of cache shards (default: `16`)
+    /// - `CACHE_MAX_ENTRIES`: Maximum cache entries (default: `10000`)
+    /// - `CACHE_MAX_SIZE_BYTES`: Maximum cache size in bytes (default: `1073741824` = 1 GB)
+    /// - `CACHE_MAX_OBJECT_SIZE_BYTES`: Maximum cacheable object size (default: `10485760` = 10 MB)
+    /// - `CACHE_TTL_SECONDS`: Cache time-to-live in seconds (default: `86400` = 24 hours)
+    /// - `WORKER_THREADS`: Tokio worker threads (default: `4`)
+    /// - `OTEL_GRPC_ENDPOINT_URL`: OpenTelemetry OTLP endpoint (optional)
+    /// - `PROMETHEUS_TEXTFILE_DIR`: Prometheus textfile collector directory (optional)
+    ///
+    /// # Panics
+    ///
+    /// Panics if required variables are missing or if validation fails.
     pub fn from_env(vars: &HashMap<String, String>) -> Self {
         let config = Self {
             listen_addr: vars

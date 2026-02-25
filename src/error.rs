@@ -1,6 +1,14 @@
+/// Application-level errors for the S3 caching proxy.
+///
+/// This enum wraps various error types that can occur during application startup
+/// and runtime.
 pub enum ApplicationError {
+    /// I/O error (e.g., network, file system).
+
     Io(std::io::Error),
+    /// OpenTelemetry OTLP exporter build error.
     Otlp(opentelemetry_otlp::ExporterBuildError),
+    /// Internal application error with description.
     Internal(String),
 }
 

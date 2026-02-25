@@ -15,7 +15,13 @@ use self::counter::CachingCounter;
 
 mod counter;
 
-/// Generic caching proxy that wraps any S3 implementation
+/// Generic caching proxy that wraps any S3 implementation.
+///
+/// Intercepts S3 requests to cache `GetObject` responses and invalidate cache
+/// entries on mutations (`PutObject`, `DeleteObject`, etc.).
+///
+/// The type parameter `T` defaults to [`s3s_aws::Proxy`] but can be any type
+/// implementing the [`S3`] trait.
 pub struct CachingProxy<T = Proxy> {
     inner: T,
     cache: Option<Arc<AsyncS3Cache>>,
@@ -29,6 +35,10 @@ pub struct CachingProxy<T = Proxy> {
 }
 
 impl<T> CachingProxy<T> {
+    /// Creates a new caching proxy wrapping an S3 implementation.
+    ///
+    /// Pass `None` for `cache` to disable caching (passthrough mode).
+    /// Set `dry_run` to `true` to validate cache correctness without serving cached data.
     pub fn new(
         inner: T,
         cache: Option<Arc<AsyncS3Cache>>,
@@ -45,17 +55,25 @@ impl<T> CachingProxy<T> {
         }
     }
 
+    /// Returns the estimated number of unique objects accessed.
+    ///
+    /// Uses a HyperLogLog probabilistic counter for memory-efficient estimation.
     pub fn estimated_unique_count(&self) -> usize {
         self.counter.estimated_count()
     }
 
+    /// Returns the estimated total bytes of unique objects accessed.
+    ///
+    /// Uses a HyperLogLog probabilistic counter for memory-efficient estimation.
     pub fn estimated_unique_bytes(&self) -> usize {
         self.counter.estimated_bytes()
     }
 }
 
 impl CachingProxy<Proxy> {
-    /// Convenience constructor for the common case of wrapping s3s_aws::Proxy
+    /// Convenience constructor for wrapping [`s3s_aws::Proxy`].
+    ///
+    /// This is equivalent to calling [`new`](Self::new) with a [`Proxy`] type parameter.
     pub fn from_aws_proxy(
         inner: Proxy,
         cache: Option<Arc<AsyncS3Cache>>,
@@ -66,7 +84,20 @@ impl CachingProxy<Proxy> {
     }
 }
 
-/// Convert an s3s Range to a string for use as a cache key component.
+/// Converts an S3 range to a string for use as a cache key component.
+///
+/// Formats the range according to HTTP Range header syntax.
+///
+/// # Examples
+///
+/// ```
+/// use s3_cache::range_to_string;
+/// use s3s::dto::Range;
+///
+/// assert_eq!(range_to_string(&Range::Int { first: 0, last: Some(99) }), "bytes=0-99");
+/// assert_eq!(range_to_string(&Range::Int { first: 100, last: None }), "bytes=100-");
+/// assert_eq!(range_to_string(&Range::Suffix { length: 500 }), "bytes=-500");
+/// ```
 pub fn range_to_string(range: &Range) -> String {
     match range {
         Range::Int {
@@ -504,15 +535,19 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
     }
 }
 
-/// Wrapper around Arc<CachingProxy> that implements S3.
-/// This allows sharing the CachingProxy between the S3 service and metrics writer.
+/// Thread-safe shared wrapper around [`CachingProxy`].
+///
+/// Wraps the proxy in an [`Arc`] to allow sharing between the S3 service handler
+/// and other components like the metrics writer.
 pub struct SharedCachingProxy<T>(Arc<CachingProxy<T>>);
 
 impl<T> SharedCachingProxy<T> {
+    /// Wraps a caching proxy for shared access.
     pub fn new(proxy: CachingProxy<T>) -> Self {
         Self(Arc::new(proxy))
     }
 
+    /// Returns a clone of the inner [`Arc<CachingProxy<T>>`].
     pub fn clone_arc(&self) -> Arc<CachingProxy<T>> {
         self.0.clone()
     }

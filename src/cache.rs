@@ -32,14 +32,31 @@ type ValuesMap<K, V> = HashMap<K, ValueEntry<V>>;
 pub struct S3FifoCache<K, V> {
     values: ValuesMap<K, V>,
 
+    // Fixed size: `N / 10`
     small: FiFoQueue<K>,
+    // Fixed size: `N`
     main: FiFoQueue<K>,
+    // Fixed size: `N`
     ghost: GhostList<K>,
 }
 
 impl<K: Clone + Eq + Hash, V> S3FifoCache<K, V> {
+    /// The scale factor used to partition capacity between small and main queues.
+    ///
+    /// A value of 10 means the main queue gets 10x more capacity than the small queue.
     pub const SCALE_FACTOR: usize = 10;
 
+    /// Creates a new S3-FIFO cache with automatic queue sizing.
+    ///
+    /// Partitions the total capacity between the small and main queues using a scale
+    /// factor of 10:1. For small caches (≤20 entries), more aggressive partitioning is used.
+    ///
+    /// ```
+    /// use s3_cache::S3FifoCache;
+    ///
+    /// let cache: S3FifoCache<String, Vec<u8>> = S3FifoCache::with_max_len(100);
+    /// assert_eq!(cache.max_len(), 100);
+    /// ```
     pub fn with_max_len(max_len: usize) -> Self {
         let scale_factor = Self::SCALE_FACTOR;
 
@@ -55,6 +72,16 @@ impl<K: Clone + Eq + Hash, V> S3FifoCache<K, V> {
         Self::new(max_small_len, max_main_len)
     }
 
+    /// Creates a new S3-FIFO cache with explicit queue sizes.
+    ///
+    /// Use this for fine-grained control over the small and main queue capacities.
+    /// For most use cases, [`with_max_len`](Self::with_max_len) is recommended.
+    ///
+    /// ```
+    /// use s3_cache::S3FifoCache;
+    ///
+    /// let cache: S3FifoCache<String, Vec<u8>> = S3FifoCache::new(10, 90);
+    /// ```
     pub fn new(max_small_len: usize, max_main_len: usize) -> Self {
         let values = HashMap::new();
 
@@ -72,30 +99,52 @@ impl<K: Clone + Eq + Hash, V> S3FifoCache<K, V> {
         }
     }
 
+    /// Returns the maximum total number of entries the cache can hold.
     #[inline]
     pub fn max_len(&self) -> usize {
         self.small.max_len() + self.main.max_len()
     }
 
+    /// Returns the current number of entries in the cache.
     #[inline]
     pub fn len(&self) -> usize {
         self.values.len()
     }
 
+    /// Returns `true` if the cache contains no entries.
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.small.is_empty() && self.main.is_empty()
     }
 
+    /// Returns `true` if the cache is at maximum capacity.
     #[inline]
     pub fn is_full(&self) -> bool {
         self.len() == self.max_len()
     }
 
+    /// Compacts internal data structures to free unused memory.
+    ///
+    /// Useful after large-scale removals or when memory pressure is high.
     pub fn compact(&mut self) {
         self.ghost.compact();
     }
 
+    /// Inserts a key-value pair into the cache.
+    ///
+    /// If the key exists, updates its value and increments the access counter.
+    /// New keys enter the small queue, or main queue if recently evicted (in ghost list).
+    /// Evicts entries as needed to maintain capacity.
+    ///
+    /// Returns the previous value if the key already existed.
+    ///
+    /// ```
+    /// use s3_cache::S3FifoCache;
+    ///
+    /// let mut cache = S3FifoCache::with_max_len(2);
+    /// assert_eq!(cache.insert("key1".to_string(), "value1".to_string()), None);
+    /// assert_eq!(cache.insert("key1".to_string(), "updated".to_string()), Some("value1".to_string()));
+    /// ```
     pub fn insert(&mut self, key: K, value: V) -> Option<V> {
         if let Some(entry) = self.values.get_mut(&key) {
             let old_value = std::mem::replace(entry.value_mut(), value);
@@ -127,6 +176,17 @@ impl<K: Clone + Eq + Hash, V> S3FifoCache<K, V> {
         None
     }
 
+    /// Gets a reference to the value associated with the key.
+    ///
+    /// Increments the internal frequency counter, affecting eviction decisions.
+    ///
+    /// ```
+    /// use s3_cache::S3FifoCache;
+    ///
+    /// let mut cache = S3FifoCache::with_max_len(10);
+    /// cache.insert("key1".to_string(), "value1".to_string());
+    /// assert_eq!(cache.get("key1"), Some(&"value1".to_string()));
+    /// ```
     pub fn get<Q>(&self, key: &Q) -> Option<&V>
     where
         K: Borrow<Q>,
@@ -138,7 +198,16 @@ impl<K: Clone + Eq + Hash, V> S3FifoCache<K, V> {
         })
     }
 
-    /// Removes a specific key from the cache. Returns true if the key was present.
+    /// Removes a key from the cache, returning its value if present.
+    ///
+    /// ```
+    /// use s3_cache::S3FifoCache;
+    ///
+    /// let mut cache = S3FifoCache::with_max_len(10);
+    /// cache.insert("key1".to_string(), "value1".to_string());
+    /// assert_eq!(cache.remove(&"key1".to_string()), Some("value1".to_string()));
+    /// assert_eq!(cache.remove(&"key1".to_string()), None);
+    /// ```
     pub fn remove(&mut self, key: &K) -> Option<V> {
         let Some(entry) = self.values.remove(key) else {
             return None;
@@ -147,7 +216,21 @@ impl<K: Clone + Eq + Hash, V> S3FifoCache<K, V> {
         Some(entry.into_value())
     }
 
-    /// Removes all entries matching the given predicate. Returns count of removed entries.
+    /// Retains only entries satisfying the predicate.
+    ///
+    /// The predicate receives mutable references, allowing in-place value modifications.
+    ///
+    /// ```
+    /// use s3_cache::S3FifoCache;
+    ///
+    /// let mut cache = S3FifoCache::with_max_len(10);
+    /// cache.insert("keep".to_string(), 100);
+    /// cache.insert("remove".to_string(), 50);
+    ///
+    /// cache.retain(|_key, value| *value >= 100);
+    /// assert!(cache.contains_key("keep"));
+    /// assert!(!cache.contains_key("remove"));
+    /// ```
     pub fn retain<F>(&mut self, mut f: F)
     where
         F: FnMut(&K, &mut V) -> bool,
@@ -155,6 +238,12 @@ impl<K: Clone + Eq + Hash, V> S3FifoCache<K, V> {
         self.values.retain(|key, entry| f(key, entry.value_mut()));
     }
 
+    /// Evicts one entry according to the S3-FIFO algorithm.
+    ///
+    /// Evicts from the small queue if it exceeds its target size, otherwise from main.
+    /// Entries with non-zero frequency counters get a second chance.
+    ///
+    /// Returns the evicted key-value pair, or `None` if the cache is empty.
     pub fn evict(&mut self) -> Option<(K, V)> {
         // Per the paper: evict from small when it exceeds its target size, else from main.
         // pop_from_small may promote (return None) instead of evicting, so we loop.
@@ -172,6 +261,9 @@ impl<K: Clone + Eq + Hash, V> S3FifoCache<K, V> {
         }
     }
 
+    /// Returns `true` if the cache contains the specified key.
+    ///
+    /// Unlike [`get`](Self::get), this does not increment the access counter.
     pub fn contains_key<Q>(&self, key: &Q) -> bool
     where
         K: Borrow<Q>,

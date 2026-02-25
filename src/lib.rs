@@ -46,19 +46,19 @@ use s3s::service::S3ServiceBuilder;
 use tokio::net::TcpListener;
 use tracing::{debug, error, info};
 
-pub use self::async_cache::AsyncS3Cache;
 pub use self::config::Config;
 pub use self::error::ApplicationError;
 pub use self::fifo_cache::{CacheKey, CachedObject, S3FifoCache};
 pub use self::proxy_service::{CachingProxy, SharedCachingProxy, range_to_string};
+pub use self::s3_cache::AsyncS3Cache;
 
-mod async_cache;
 mod auth;
 mod config;
 mod error;
 mod fifo_cache;
 mod metrics_writer;
 pub mod proxy_service;
+mod s3_cache;
 mod telemetry;
 
 /// Result type alias using [`ApplicationError`] as the error type.

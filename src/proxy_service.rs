@@ -6,8 +6,8 @@ use s3s::{S3, S3Request, S3Response, S3Result, s3_error};
 use s3s_aws::Proxy;
 use tracing::{debug, error, warn};
 
-use crate::async_cache::AsyncS3Cache;
 use crate::fifo_cache::{CacheKey, CachedObject, CachedObjectBody};
+use crate::s3_cache::AsyncS3Cache;
 use crate::telemetry;
 
 use self::counter::CachingCounter;

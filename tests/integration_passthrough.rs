@@ -3,7 +3,7 @@ mod common;
 use bytes::Bytes;
 use common::MockS3Backend;
 use common::helpers::*;
-use s3_cache::proxy_service::{CachingProxy, SharedCachingProxy};
+use s3_cache::{CachingProxy, SharedCachingProxy};
 use s3s::S3;
 
 /// Test that create_bucket passes through without "not implemented" error
@@ -11,7 +11,12 @@ use s3s::S3;
 async fn create_bucket_passthrough() {
     let backend = MockS3Backend::new();
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = SharedCachingProxy::new(CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false));
+    let proxy = SharedCachingProxy::new(CachingProxy::new(
+        backend.clone(),
+        Some(cache.clone()),
+        usize::MAX,
+        false,
+    ));
 
     let req = build_create_bucket_request("test-bucket");
     let result = proxy.create_bucket(req).await;
@@ -27,7 +32,12 @@ async fn create_bucket_passthrough() {
 async fn delete_bucket_passthrough() {
     let backend = MockS3Backend::new();
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = SharedCachingProxy::new(CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false));
+    let proxy = SharedCachingProxy::new(CachingProxy::new(
+        backend.clone(),
+        Some(cache.clone()),
+        usize::MAX,
+        false,
+    ));
 
     // Create bucket first
     let req = build_create_bucket_request("test-bucket");
@@ -48,7 +58,12 @@ async fn delete_bucket_passthrough() {
 async fn head_bucket_passthrough() {
     let backend = MockS3Backend::new();
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = SharedCachingProxy::new(CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false));
+    let proxy = SharedCachingProxy::new(CachingProxy::new(
+        backend.clone(),
+        Some(cache.clone()),
+        usize::MAX,
+        false,
+    ));
 
     // Create bucket first
     let req = build_create_bucket_request("test-bucket");
@@ -69,7 +84,12 @@ async fn head_bucket_passthrough() {
 async fn list_buckets_passthrough() {
     let backend = MockS3Backend::new();
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = SharedCachingProxy::new(CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false));
+    let proxy = SharedCachingProxy::new(CachingProxy::new(
+        backend.clone(),
+        Some(cache.clone()),
+        usize::MAX,
+        false,
+    ));
 
     let req = build_list_buckets_request();
     let result = proxy.list_buckets(req).await;
@@ -85,7 +105,12 @@ async fn list_buckets_passthrough() {
 async fn list_objects_passthrough() {
     let backend = MockS3Backend::new();
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = SharedCachingProxy::new(CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false));
+    let proxy = SharedCachingProxy::new(CachingProxy::new(
+        backend.clone(),
+        Some(cache.clone()),
+        usize::MAX,
+        false,
+    ));
 
     // Create bucket first
     let req = build_create_bucket_request("test-bucket");
@@ -106,7 +131,12 @@ async fn list_objects_passthrough() {
 async fn list_objects_v2_passthrough() {
     let backend = MockS3Backend::new();
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = SharedCachingProxy::new(CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false));
+    let proxy = SharedCachingProxy::new(CachingProxy::new(
+        backend.clone(),
+        Some(cache.clone()),
+        usize::MAX,
+        false,
+    ));
 
     // Create bucket first
     let req = build_create_bucket_request("test-bucket");
@@ -127,7 +157,12 @@ async fn list_objects_v2_passthrough() {
 async fn get_bucket_location_passthrough() {
     let backend = MockS3Backend::new();
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = SharedCachingProxy::new(CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false));
+    let proxy = SharedCachingProxy::new(CachingProxy::new(
+        backend.clone(),
+        Some(cache.clone()),
+        usize::MAX,
+        false,
+    ));
 
     // Create bucket first
     let req = build_create_bucket_request("test-bucket");
@@ -148,7 +183,12 @@ async fn get_bucket_location_passthrough() {
 async fn create_multipart_upload_passthrough() {
     let backend = MockS3Backend::new();
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = SharedCachingProxy::new(CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false));
+    let proxy = SharedCachingProxy::new(CachingProxy::new(
+        backend.clone(),
+        Some(cache.clone()),
+        usize::MAX,
+        false,
+    ));
 
     let req = build_create_multipart_upload_request("test-bucket", "test-key.txt");
     let result = proxy.create_multipart_upload(req).await;
@@ -164,7 +204,12 @@ async fn create_multipart_upload_passthrough() {
 async fn complete_multipart_upload_passthrough() {
     let backend = MockS3Backend::new();
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = SharedCachingProxy::new(CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false));
+    let proxy = SharedCachingProxy::new(CachingProxy::new(
+        backend.clone(),
+        Some(cache.clone()),
+        usize::MAX,
+        false,
+    ));
 
     let req = build_complete_multipart_upload_request("test-bucket", "test-key.txt", "upload-123");
     let result = proxy.complete_multipart_upload(req).await;
@@ -180,7 +225,12 @@ async fn complete_multipart_upload_passthrough() {
 async fn abort_multipart_upload_passthrough() {
     let backend = MockS3Backend::new();
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = SharedCachingProxy::new(CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false));
+    let proxy = SharedCachingProxy::new(CachingProxy::new(
+        backend.clone(),
+        Some(cache.clone()),
+        usize::MAX,
+        false,
+    ));
 
     let req = build_abort_multipart_upload_request("test-bucket", "test-key.txt", "upload-123");
     let result = proxy.abort_multipart_upload(req).await;
@@ -196,7 +246,12 @@ async fn abort_multipart_upload_passthrough() {
 async fn list_multipart_uploads_passthrough() {
     let backend = MockS3Backend::new();
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = SharedCachingProxy::new(CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false));
+    let proxy = SharedCachingProxy::new(CachingProxy::new(
+        backend.clone(),
+        Some(cache.clone()),
+        usize::MAX,
+        false,
+    ));
 
     let req = build_list_multipart_uploads_request("test-bucket");
     let result = proxy.list_multipart_uploads(req).await;
@@ -212,7 +267,12 @@ async fn list_multipart_uploads_passthrough() {
 async fn list_parts_passthrough() {
     let backend = MockS3Backend::new();
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = SharedCachingProxy::new(CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false));
+    let proxy = SharedCachingProxy::new(CachingProxy::new(
+        backend.clone(),
+        Some(cache.clone()),
+        usize::MAX,
+        false,
+    ));
 
     let req = build_list_parts_request("test-bucket", "test-key.txt", "upload-123");
     let result = proxy.list_parts(req).await;
@@ -228,7 +288,12 @@ async fn list_parts_passthrough() {
 async fn upload_part_passthrough() {
     let backend = MockS3Backend::new();
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = SharedCachingProxy::new(CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false));
+    let proxy = SharedCachingProxy::new(CachingProxy::new(
+        backend.clone(),
+        Some(cache.clone()),
+        usize::MAX,
+        false,
+    ));
 
     let req = build_upload_part_request(
         "test-bucket",
@@ -250,7 +315,12 @@ async fn upload_part_passthrough() {
 async fn upload_part_copy_passthrough() {
     let backend = MockS3Backend::new();
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = SharedCachingProxy::new(CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false));
+    let proxy = SharedCachingProxy::new(CachingProxy::new(
+        backend.clone(),
+        Some(cache.clone()),
+        usize::MAX,
+        false,
+    ));
 
     let req = build_upload_part_copy_request(
         "source-bucket",

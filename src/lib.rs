@@ -57,7 +57,7 @@ mod config;
 mod error;
 mod fifo_cache;
 mod metrics_writer;
-pub mod proxy_service;
+mod proxy_service;
 mod s3_cache;
 mod telemetry;
 

@@ -47,16 +47,16 @@ use tokio::net::TcpListener;
 use tracing::{debug, error, info};
 
 pub use self::async_cache::AsyncS3Cache;
-pub use self::cache::{CacheKey, CachedObject, S3FifoCache};
 pub use self::config::Config;
 pub use self::error::ApplicationError;
+pub use self::fifo_cache::{CacheKey, CachedObject, S3FifoCache};
 pub use self::proxy_service::{CachingProxy, SharedCachingProxy, range_to_string};
 
 mod async_cache;
 mod auth;
-mod cache;
 mod config;
 mod error;
+mod fifo_cache;
 mod metrics_writer;
 pub mod proxy_service;
 mod telemetry;
@@ -145,14 +145,13 @@ pub async fn start_app(config: Config) -> Result<()> {
     });
 
     // Build caching proxy (wrapped for sharing with metrics writer)
-    let caching_proxy = proxy_service::SharedCachingProxy::new(
-        proxy_service::CachingProxy::from_aws_proxy(
+    let caching_proxy =
+        proxy_service::SharedCachingProxy::new(proxy_service::CachingProxy::from_aws_proxy(
             proxy,
             cache,
             config.cache_max_object_size_bytes,
             config.cache_dryrun,
-        ),
-    );
+        ));
 
     // Build S3 service with auth
     let service = {
@@ -162,8 +161,7 @@ pub async fn start_app(config: Config) -> Result<()> {
     };
 
     // Start Prometheus metrics writer if configured
-    let metrics_writer_handle = if let Some(textfile_dir) = config.prometheus_textfile_dir.clone()
-    {
+    let metrics_writer_handle = if let Some(textfile_dir) = config.prometheus_textfile_dir.clone() {
         info!(
             "Starting Prometheus textfile writer to {}/s3_cache.prom",
             textfile_dir

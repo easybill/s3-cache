@@ -6,7 +6,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
 
 use crate::S3FifoCache;
-use crate::cache::{CacheKey, CachedObject};
+use crate::fifo_cache::{CacheKey, CachedObject};
 use crate::telemetry;
 
 /// Statistics snapshot for [`AsyncS3Cache`].

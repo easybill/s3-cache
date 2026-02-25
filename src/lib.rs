@@ -48,9 +48,9 @@ use tracing::{debug, error, info};
 
 pub use self::config::Config;
 pub use self::error::ApplicationError;
-pub use self::fifo_cache::{CacheKey, CachedObject, S3FifoCache};
+pub use self::fifo_cache::S3FifoCache;
 pub use self::proxy_service::{CachingProxy, SharedCachingProxy, range_to_string};
-pub use self::s3_cache::AsyncS3Cache;
+pub use self::s3_cache::{AsyncS3Cache, CacheKey, CachedObject};
 
 mod auth;
 mod config;

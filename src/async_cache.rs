@@ -42,12 +42,83 @@ impl AsyncS3CacheShard {
 ///
 /// # Memory Estimates
 ///
-/// Given a max length of `N` the cache requires memory of approximately:
+/// This cache uses `S3FifoCache<CacheKey, CachedObject>` internally, where `CacheKey`
+/// wraps `Arc<CacheKeyState>` for efficient memory sharing.
+///
+/// ## Per-Entry Memory Breakdown
+///
+/// Given a max length of `N`, each entry requires approximately:
 ///
 /// ```plain
-/// APPROX_MIN_BYTES = N * 6
-/// APPROX_MAX_BYTES = N * (8 + sizeof(K) + sizeof(V))
+/// APPROX_MIN_BYTES_PER_ENTRY =
+///     16  (CacheKey Arc pointers: 2 copies × 8 bytes)
+///   + 96  (CacheKeyState base struct)
+///   + bucket.len() + key.len() + range.len() + version_id.len()
+///   + 176 (CachedObject base size with metadata)
+///   + content_length (actual body bytes)
+///
+/// APPROX_MAX_BYTES_PER_ENTRY =
+///     32  (CacheKey Arc pointers: 4 copies × 8 bytes)
+///   + 96  (CacheKeyState base struct, shared)
+///   + bucket.len() + key.len() + range.len() + version_id.len()
+///   + 176 (CachedObject base size with metadata)
+///   + content_length (actual body bytes)
 /// ```
+///
+/// All sizes are in bytes, rounded to the nearest full byte.
+///
+/// ## Arc-Based Memory Sharing
+///
+/// `CacheKey` stores an `Arc<CacheKeyState>` (8-byte pointer). When keys are duplicated
+/// across internal queues (small, main, ghost), only the Arc pointer is copied—the
+/// actual `CacheKeyState` (containing bucket, key, range, and version_id strings) is
+/// stored once and shared among all clones.
+///
+/// Similarly, `CachedObject`'s `Bytes` body uses `Arc` internally (from the `bytes`
+/// crate), enabling efficient sharing when objects are cloned.
+///
+/// ## Scenarios
+///
+/// - **Minimum:** Cache starting to fill. Each `CacheKey` appears 2 times (as Arc
+///   pointers): once in the values HashMap and once in a queue. The actual
+///   `CacheKeyState` data is stored once.
+///
+/// - **Maximum:** Cache at full capacity with active eviction. Each `CacheKey` appears
+///   4 times (as Arc pointers): once in values, once in a queue, and twice in the ghost
+///   list (HashSet + VecDeque). The actual `CacheKeyState` data is still stored once.
+///
+/// ## Examples
+///
+/// ```rust
+/// // Example 1: Small objects with short keys
+/// // bucket: "mybucket" (8 bytes), key: "file.txt" (8 bytes)
+/// // range: None, version_id: None, body: 1KB
+/// // MIN ≈ 16 + 96 + 16 + 176 + 1024 = 1,328 bytes per entry
+/// // MAX ≈ 32 + 96 + 16 + 176 + 1024 = 1,344 bytes per entry
+///
+/// // Example 2: Large objects (body dominates)
+/// // bucket: "prod" (4 bytes), key: "data/object.bin" (15 bytes)
+/// // range: "bytes=0-10485759" (16 bytes), version_id: None
+/// // body: 10MB (10,485,760 bytes)
+/// // MIN ≈ 16 + 96 + 35 + 176 + 10,485,760 = ~10MB per entry
+/// // MAX ≈ 32 + 96 + 35 + 176 + 10,485,760 = ~10MB per entry
+/// // Note: For large objects, the 16-byte Arc pointer difference is negligible
+/// ```
+///
+/// ## Capacity Planning
+///
+/// - **Small objects (<10KB):** Metadata and key duplication dominate memory usage
+/// - **Large objects (>1MB):** Body size dominates; key duplication overhead is negligible
+/// - Use `max_size` to control total memory by content length
+/// - Use `max_len` to control entry count
+/// - Practical memory budget: `average_object_size × max_len × 1.5`
+///
+/// ## Additional Overhead
+///
+/// Beyond per-entry costs, the cache includes:
+/// - Sharding overhead: `num_shards × (RwLock + AtomicUsize)` (~48 bytes per shard)
+/// - Global tracking: `AtomicU64 + AtomicUsize + Duration + usize` (~32 bytes total)
+/// - See [`S3FifoCache`](crate::S3FifoCache) documentation for detailed formula explanation
 ///
 /// Note: The `S3` in `AsyncS3Cache` refers to Amazon's `S3` web service.
 pub struct AsyncS3Cache {

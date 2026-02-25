@@ -23,11 +23,58 @@ type ValuesMap<K, V> = HashMap<K, ValueEntry<V>>;
 ///
 /// # Memory Estimates
 ///
-/// Given a max length of `N` the cache requires memory of approximately:
+/// Given a max length of `N`, the cache requires memory of approximately:
 ///
 /// ```plain
-/// APPROX_MIN_BYTES = N * (3 * sizeof(K))
-/// APPROX_MAX_BYTES = N * (4 * sizeof(K) + sizeof(V))
+/// APPROX_MIN_BYTES = N * (2 * sizeof(K) + sizeof(V) + 1)
+/// APPROX_MAX_BYTES = N * (4 * sizeof(K) + sizeof(V) + 1)
+/// ```
+///
+/// All sizes are in bytes. The `+1` accounts for the `AtomicU8` frequency counter
+/// in the `ValueEntry<V>` wrapper. Use `std::mem::size_of::<T>()` to determine type sizes.
+///
+/// ## Scenarios
+///
+/// - **Minimum:** Cache starting to fill. Each entry's key appears in the values
+///   `HashMap` and in one queue (small or main). No ghost entries yet.
+///   - Key storage: 2 copies per entry (1 in HashMap + 1 in queue)
+///   - Value storage: 1 copy per entry (in HashMap)
+///
+/// - **Maximum:** Cache at full capacity with active eviction. Ghost list is populated
+///   with N evicted keys. Maximum key duplication across all internal structures.
+///   - Active key storage: 2 copies per entry (1 in HashMap + 1 in queue)
+///   - Evicted key storage: 2 copies per entry (1 in ghost HashSet + 1 in ghost VecDeque)
+///   - Total: 4 key copies per unique key at maximum
+///
+/// ## Arc-Wrapped Types
+///
+/// For types wrapped in `Arc<T>`, note that `sizeof(Arc<T>)` returns the pointer size
+/// (8 bytes on 64-bit systems), not the size of the wrapped data. When `Arc<T>` keys are
+/// duplicated in the cache's internal structures, only the Arc pointer is copied—the
+/// actual wrapped data is heap-allocated and shared among all clones.
+///
+/// ## Important Notes
+///
+/// - Formulas exclude `HashMap` and `VecDeque` internal overhead (buckets, capacity
+///   over-allocation, etc.)
+/// - Actual memory usage may be 1.5-2x higher due to allocator overhead and data
+///   structure internals
+/// - Padding and alignment may add additional bytes depending on your types
+///
+/// ## Examples
+///
+/// ```rust
+/// use std::mem::size_of;
+/// use std::sync::Arc;
+///
+/// // Example 1: String keys (24 bytes), u64 values (8 bytes)
+/// // MIN = N * (2*24 + 8 + 1) = 57N bytes
+/// // MAX = N * (4*24 + 8 + 1) = 105N bytes
+///
+/// // Example 2: Arc<String> keys (8 bytes pointer), u64 values (8 bytes)
+/// // MIN = N * (2*8 + 8 + 1) = 25N bytes
+/// // MAX = N * (4*8 + 8 + 1) = 41N bytes
+/// // Note: The actual String data is allocated once; only Arc pointers are duplicated
 /// ```
 pub struct S3FifoCache<K, V> {
     values: ValuesMap<K, V>,

@@ -623,4 +623,46 @@ impl<T: S3 + Send + Sync> S3 for SharedCachingProxy<T> {
     ) -> S3Result<S3Response<UploadPartCopyOutput>> {
         self.0.upload_part_copy(req).await
     }
+
+    async fn create_bucket(
+        &self,
+        req: S3Request<CreateBucketInput>,
+    ) -> S3Result<S3Response<CreateBucketOutput>> {
+        self.0.create_bucket(req).await
+    }
+
+    async fn list_buckets(
+        &self,
+        req: S3Request<ListBucketsInput>,
+    ) -> S3Result<S3Response<ListBucketsOutput>> {
+        self.0.list_buckets(req).await
+    }
+
+    async fn delete_bucket(
+        &self,
+        req: S3Request<DeleteBucketInput>,
+    ) -> S3Result<S3Response<DeleteBucketOutput>> {
+        self.0.delete_bucket(req).await
+    }
+
+    async fn get_bucket_location(
+        &self,
+        req: S3Request<GetBucketLocationInput>,
+    ) -> S3Result<S3Response<GetBucketLocationOutput>> {
+        self.0.get_bucket_location(req).await
+    }
+
+    async fn head_bucket(
+        &self,
+        req: S3Request<HeadBucketInput>,
+    ) -> S3Result<S3Response<HeadBucketOutput>> {
+        self.0.head_bucket(req).await
+    }
+
+    async fn list_multipart_uploads(
+        &self,
+        req: S3Request<ListMultipartUploadsInput>,
+    ) -> S3Result<S3Response<ListMultipartUploadsOutput>> {
+        self.0.list_multipart_uploads(req).await
+    }
 }

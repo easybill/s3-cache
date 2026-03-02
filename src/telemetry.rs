@@ -290,7 +290,9 @@ static UPSTREAM_ERROR: LazyLock<Counter<u64>> = LazyLock::new(|| {
 static BUFFERING_ERROR: LazyLock<Counter<u64>> = LazyLock::new(|| {
     opentelemetry::global::meter(CARGO_CRATE_NAME)
         .u64_counter("cache.buffering_error")
-        .with_description("Number of buffering errors (object exceeded size limit during streaming)")
+        .with_description(
+            "Number of buffering errors (object exceeded size limit during streaming)",
+        )
         .build()
 });
 

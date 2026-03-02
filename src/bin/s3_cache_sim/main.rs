@@ -2,8 +2,8 @@ mod simulated_backend;
 mod workload;
 
 use std::collections::HashSet;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use clap::Parser;
@@ -11,7 +11,7 @@ use http::{HeaderMap, Method, Uri};
 use s3s::dto::*;
 use s3s::{S3, S3Request};
 
-use s3_cache::{S3Cache, CachingProxy};
+use s3_cache::{CachingProxy, S3Cache};
 
 use simulated_backend::SimulatedBackend;
 use workload::Pattern;
@@ -208,10 +208,7 @@ async fn main() {
 
     // Partition workload across tasks
     let chunk_size = (workload.len() + args.concurrency - 1) / args.concurrency;
-    let chunks: Vec<Vec<usize>> = workload
-        .chunks(chunk_size)
-        .map(|c| c.to_vec())
-        .collect();
+    let chunks: Vec<Vec<usize>> = workload.chunks(chunk_size).map(|c| c.to_vec()).collect();
 
     let completed = Arc::new(AtomicU64::new(0));
     let errors = Arc::new(AtomicU64::new(0));
@@ -247,9 +244,7 @@ async fn main() {
                 if progress_interval > 0 && done % (progress_interval as u64) == 0 {
                     let wall = start.elapsed().as_secs_f64();
                     let rps = done as f64 / wall;
-                    eprintln!(
-                        "[{wall:.1}s] {done}/{total_requests} requests ({rps:.0} req/s)"
-                    );
+                    eprintln!("[{wall:.1}s] {done}/{total_requests} requests ({rps:.0} req/s)");
                 }
             }
 
@@ -295,10 +290,7 @@ async fn main() {
     eprintln!("=== Results ===");
     eprintln!("Total requests:  {total}");
     eprintln!("Hits:            {hits} ({hit_rate:.1}%)");
-    eprintln!(
-        "Misses:          {backend_gets} ({:.1}%)",
-        100.0 - hit_rate
-    );
+    eprintln!("Misses:          {backend_gets} ({:.1}%)", 100.0 - hit_rate);
     eprintln!("Errors:          {total_errors}");
     eprintln!("Duration:        {:.2}s", total_duration.as_secs_f64());
     eprintln!("Throughput:      {throughput:.0} req/s");

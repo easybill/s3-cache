@@ -128,13 +128,13 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
                 telemetry::record_cache_hit();
                 cache.report_stats().await;
 
-                if !self.dry_run {
-                    self.counter.insert(&key, cached.content_length());
-                    telemetry::record_counter_estimates(
-                        self.counter.estimated_count(),
-                        self.counter.estimated_bytes(),
-                    );
+                self.counter.insert(&key, cached.content_length());
+                telemetry::record_counter_estimates(
+                    self.counter.estimated_count(),
+                    self.counter.estimated_bytes(),
+                );
 
+                if !self.dry_run {
                     let Some(output) = cached.to_s3_object() else {
                         panic!("expected bytes, found hash");
                     };
@@ -219,7 +219,7 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
                             || cached_hit.last_modified() != output.last_modified.as_ref()
                             || cached_hit.body() != &body
                         {
-                            warn!(
+                            error!(
                                 bucket = %cache_key.bucket(),
                                 key = %cache_key.key(),
                                 range = ?cache_key.range(),
@@ -252,7 +252,7 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
 
                 if let Some(cache) = &self.cache {
                     let _existing = cache.insert(cache_key, cached).await;
-                    debug!(bucket = %bucket, key = %key, size = content_length, "cached object");
+                    debug!(bucket = %bucket, key = %key, size = content_length, "object cached");
                     cache.report_stats().await;
                 }
 
@@ -313,9 +313,11 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
             let count = cache.invalidate_object(&bucket, &key).await;
 
             if count > 0 {
-                debug!(bucket = %bucket, key = %key, count, "invalidated cache entries on put");
+                debug!(bucket = %bucket, key = %key, "{count} cache entries invalidated on put");
                 telemetry::record_cache_invalidation();
                 cache.report_stats().await;
+            } else {
+                debug!(bucket = %bucket, key = %key, "no cache entries invalidated on put");
             }
         }
 
@@ -339,9 +341,11 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
             let count = cache.invalidate_object(&bucket, &key).await;
 
             if count > 0 {
-                debug!(bucket = %bucket, key = %key, count, "invalidated cache entries on delete");
+                debug!(bucket = %bucket, key = %key, "{count} cache entries invalidated on delete");
                 telemetry::record_cache_invalidation();
                 cache.report_stats().await;
+            } else {
+                debug!(bucket = %bucket, key = %key, "no cache entries invalidated on delete");
             }
         }
 
@@ -372,8 +376,10 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
                 let count = cache.invalidate_object(&bucket, key).await;
 
                 if count > 0 {
-                    debug!(bucket = %bucket, key = %key, count, "invalidated cache entries on batch delete");
+                    debug!(bucket = %bucket, key = %key, "{count} cache entries invalidated on batch delete");
                     telemetry::record_cache_invalidation();
+                } else {
+                    debug!(bucket = %bucket, key = %key, "no cache entries invalidated on batch delete");
                 }
             }
             cache.report_stats().await;
@@ -399,9 +405,11 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
             let count = cache.invalidate_object(&dest_bucket, &dest_key).await;
 
             if count > 0 {
-                debug!(bucket = %dest_bucket, key = %dest_key, count, "invalidated cache entries on copy");
+                debug!(bucket = %dest_bucket, key = %dest_key, "{count} cache entries invalidated on copy");
                 telemetry::record_cache_invalidation();
                 cache.report_stats().await;
+            } else {
+                debug!(bucket = %dest_bucket, key = %dest_key, "no cache entries invalidated on copy");
             }
         }
 
@@ -432,9 +440,11 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
             let count = cache.invalidate_object(&bucket, &key).await;
 
             if count > 0 {
-                debug!(bucket = %bucket, key = %key, count, "invalidated cache entries on multipart upload completion");
+                debug!(bucket = %bucket, key = %key, "{count} cache entries invalidated on multipart upload completion");
                 telemetry::record_cache_invalidation();
                 cache.report_stats().await;
+            } else {
+                debug!(bucket = %bucket, key = %key, "no cache entries invalidated on multipart upload completion");
             }
         }
 

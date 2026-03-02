@@ -14,6 +14,7 @@ use s3s::{S3, S3Request};
 use s3_cache::{CachingProxy, S3Cache};
 
 use simulated_backend::SimulatedBackend;
+use tracing_subscriber::fmt::format::FmtSpan;
 use workload::Pattern;
 
 #[derive(Parser, Debug)]
@@ -116,6 +117,14 @@ fn index_to_key(idx: usize) -> String {
 
 #[tokio::main]
 async fn main() {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .with_span_events(FmtSpan::CLOSE)
+        .init();
+
     let args = Args::parse();
 
     // Determine default object size for one-hit-wonders (median of range)

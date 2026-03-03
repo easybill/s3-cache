@@ -88,6 +88,10 @@ struct Args {
     #[arg(long, default_value_t = false)]
     no_cache: bool,
 
+    /// Enable dry-run mode
+    #[arg(long, default_value_t = false)]
+    dry_run: bool,
+
     /// RNG seed for reproducibility
     #[arg(long, default_value_t = 42)]
     seed: u64,
@@ -165,7 +169,7 @@ async fn main() {
             backend.clone(),
             Some(cache),
             args.max_cacheable_size,
-            false,
+            args.dry_run,
         )))
     };
 

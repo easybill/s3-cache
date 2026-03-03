@@ -25,6 +25,7 @@ pub struct CachingProxy<T = Proxy> {
     cache: Option<Arc<S3Cache>>,
     max_cacheable_size: usize,
     counter: CachingCounter,
+    hash_builder: RandomState,
     /// Dry-run mode: the cache is populated and checked, but get_object always
     /// returns the fresh upstream response. On cache hit the cached body is
     /// compared against the fresh body and a `cache.mismatch` event is emitted
@@ -44,11 +45,14 @@ impl<T> CachingProxy<T> {
         dry_run: bool,
     ) -> Self {
         let counter = CachingCounter::default();
+        let hash_builder = RandomState::new();
+
         Self {
             inner,
             cache,
             max_cacheable_size,
             counter,
+            hash_builder,
             dry_run,
         }
     }
@@ -203,7 +207,7 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
                 let content_length = bytes.len();
 
                 let body = if self.dry_run {
-                    let hash = RandomState::new().hash_one(&bytes);
+                    let hash = self.hash_builder.hash_one(&bytes);
                     CachedObjectBody::Hash { hash }
                 } else {
                     CachedObjectBody::Bytes {

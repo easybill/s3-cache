@@ -41,7 +41,9 @@ impl Config {
     /// # Optional environment variables with defaults
     ///
     /// - `LISTEN_ADDR`: Proxy listen address (default: `0.0.0.0:8080`)
-    /// - `UPSTREAM_REGION`: AWS region (default: `us-east-1`)
+    /// - `UPSTREAM_REGION`: AWS region used to sign upstream requests (default: `us-east-1`).
+    ///   Must match the region your MinIO/S3 backend is configured with, **or** `us-east-1`
+    ///   (MinIO accepts `us-east-1` as a backward-compatibility alias for any configured region).
     /// - `CACHE_ENABLED`: Enable caching (default: `true`)
     /// - `CACHE_DRYRUN`: Dry-run mode for cache validation (default: `false`)
     /// - `CACHE_SHARDS`: Number of cache shards (default: `16`)

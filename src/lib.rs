@@ -59,6 +59,7 @@ mod fifo_cache;
 mod metrics_writer;
 mod proxy_service;
 mod s3_cache;
+mod statistics;
 mod telemetry;
 
 /// Result type alias using [`ApplicationError`] as the error type.

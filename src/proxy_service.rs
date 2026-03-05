@@ -7,11 +7,8 @@ use s3s_aws::Proxy;
 use tracing::{debug, error, warn};
 
 use crate::s3_cache::{CacheKey, CachedObject, CachedObjectBody, S3Cache};
+use crate::statistics::S3CacheStatisticsManager;
 use crate::telemetry;
-
-use self::statistics::S3CacheStatisticsManager;
-
-mod statistics;
 
 /// Generic caching proxy that wraps any S3 implementation.
 ///

@@ -41,7 +41,7 @@ impl<T> CachingProxy<T> {
         max_cacheable_size: usize,
         dry_run: bool,
     ) -> Self {
-        let statistics = S3CacheStatisticsTracker::default();
+        let statistics = S3CacheStatisticsTracker::new();
         let hash_builder = RandomState::new();
 
         Self {

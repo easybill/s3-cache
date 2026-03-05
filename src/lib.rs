@@ -51,6 +51,7 @@ pub use self::error::ApplicationError;
 pub use self::fifo_cache::FifoCache;
 pub use self::proxy_service::{CachingProxy, SharedCachingProxy, range_to_string};
 pub use self::s3_cache::{CacheKey, CachedObject, S3Cache};
+pub use self::statistics::S3CacheStatisticsTracker;
 
 mod auth;
 mod config;

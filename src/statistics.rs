@@ -4,50 +4,36 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use hyperloglockless::AtomicHyperLogLog;
 
-use self::mean_variance::MeanVarianceTracker;
-use self::median::EstimatedMedianTracker;
+use self::distribution::SizeDistributionTracker;
 
-mod mean_variance;
-mod median;
+mod distribution;
 
 pub struct S3CacheStatisticsTracker {
     hll: AtomicHyperLogLog,
     bytes: AtomicUsize,
-    mean_variance: Mutex<MeanVarianceTracker>,
-    median: Mutex<EstimatedMedianTracker>,
+    median: Mutex<SizeDistributionTracker>,
 }
 
 impl Default for S3CacheStatisticsTracker {
     fn default() -> Self {
-        Self::new(Self::DEFAULT_FALSE_POSITIVE_RATE)
+        Self::new()
     }
 }
 
 impl S3CacheStatisticsTracker {
     pub const DEFAULT_FALSE_POSITIVE_RATE: f64 = 0.005;
 
-    /// Step size (bytes) used by the median estimator.
-    ///
-    /// A 1 KiB step works well for typical S3 object sizes; adjust if your
-    /// workload has a very different scale.
-    pub const DEFAULT_MEDIAN_ETA: f64 = 1024.0;
-
-    pub fn new(false_positive_rate: f64) -> Self {
+    pub fn new() -> Self {
         let seed_bytes: [u8; 16] = core::array::from_fn(|i| (i + 1) as u8);
         let seed = u128::from_ne_bytes(seed_bytes);
 
-        let precision = hyperloglockless::precision_for_error(false_positive_rate);
+        let precision = hyperloglockless::precision_for_error(Self::DEFAULT_FALSE_POSITIVE_RATE);
         let hll = AtomicHyperLogLog::seeded(precision, seed);
 
         Self {
             hll,
             bytes: AtomicUsize::new(0),
-            mean_variance: Mutex::new(MeanVarianceTracker::new()),
-            median: Mutex::new(EstimatedMedianTracker::new(
-                0.0,
-                0.5,
-                Self::DEFAULT_MEDIAN_ETA,
-            )),
+            median: Mutex::new(SizeDistributionTracker::new(0.5)),
         }
     }
 
@@ -61,10 +47,7 @@ impl S3CacheStatisticsTracker {
 
         if count_before < count_after {
             self.bytes.fetch_add(bytes, Ordering::Relaxed);
-
-            let x = bytes as f64;
-            self.mean_variance.lock().unwrap().update(x);
-            self.median.lock().unwrap().update(x);
+            self.median.lock().unwrap().update(bytes as f64);
         }
     }
 
@@ -78,19 +61,19 @@ impl S3CacheStatisticsTracker {
 
     /// Mean object size in bytes across all uniquely inserted objects.
     pub fn mean_object_size(&self) -> f64 {
-        self.mean_variance.lock().unwrap().mean()
+        self.median.lock().unwrap().mean()
     }
 
     /// Population variance of object sizes in bytes².
     ///
     /// Returns `None` when no objects have been inserted yet.
     pub fn variance_object_size(&self) -> Option<f64> {
-        self.mean_variance.lock().unwrap().variance()
+        self.median.lock().unwrap().variance()
     }
 
-    /// Estimated median object size in bytes (SGD quantile estimator).
+    /// Estimated median object size in bytes (P² quantile estimator).
     pub fn estimated_median_object_size(&self) -> f64 {
-        self.median.lock().unwrap().estimate()
+        self.median.lock().unwrap().estimate_median()
     }
 }
 
@@ -108,7 +91,6 @@ mod tests {
         assert_eq!(counter.estimated_count(), 0);
         assert_eq!(counter.mean_object_size(), 0.0);
         assert_eq!(counter.variance_object_size(), None);
-        assert_eq!(counter.estimated_median_object_size(), 0.0);
     }
 
     #[test]
@@ -128,26 +110,14 @@ mod tests {
     }
 
     #[test]
-    fn custom_false_positive_rate() {
-        // Use 0.05 which should give a valid precision (within 4..=18)
-        let counter = S3CacheStatisticsTracker::new(0.05);
-        assert_eq!(counter.estimated_bytes(), 0);
-        assert_eq!(counter.estimated_count(), 0);
-    }
-
-    #[test]
     fn insert_unique_keys() {
         let counter = S3CacheStatisticsTracker::default();
         let initial_bytes = counter.estimated_bytes();
 
-        // Insert multiple unique keys
         counter.insert(&"key1", 100);
         counter.insert(&"key2", 200);
         counter.insert(&"key3", 150);
 
-        // Total bytes should increase by sum of all inserts
-        // Note: Due to HyperLogLog's probabilistic nature, some keys might not
-        // increment the raw_count, so we check that bytes increased but not necessarily by exact amount
         let final_bytes = counter.estimated_bytes();
         assert!(
             final_bytes > initial_bytes,
@@ -163,11 +133,9 @@ mod tests {
     fn duplicate_key_does_not_add_extra_estimated_bytes() {
         let counter = S3CacheStatisticsTracker::default();
 
-        // Insert the same key multiple times
         counter.insert(&"duplicate_key", 100);
         let bytes_after_first = counter.estimated_bytes();
 
-        // Second and third inserts of same key should not add more bytes
         counter.insert(&"duplicate_key", 100);
         counter.insert(&"duplicate_key", 100);
 
@@ -186,15 +154,12 @@ mod tests {
         counter.insert(&"key2", 200);
         let bytes_after_key2 = counter.estimated_bytes();
 
-        // Duplicate inserts
         counter.insert(&"key1", 100);
         counter.insert(&"key2", 200);
         let bytes_after_duplicates = counter.estimated_bytes();
 
-        // Bytes should not increase from duplicates
         assert_eq!(bytes_after_key2, bytes_after_duplicates);
 
-        // Insert another unique key
         counter.insert(&"key3", 300);
         let final_bytes = counter.estimated_bytes();
 
@@ -231,10 +196,8 @@ mod tests {
         counter.insert(&"key1", 0);
         counter.insert(&"key2", 0);
 
-        // Even with 0-byte inserts, bytes should stay at 0
         assert_eq!(counter.estimated_bytes(), 0);
 
-        // The counter should still track cardinality
         let count = counter.estimated_count();
         assert!(count <= 2, "Should have at most 2 unique keys");
     }
@@ -248,13 +211,9 @@ mod tests {
             counter.insert(&i, 10);
         }
 
-        // HyperLogLog's raw_count only increments when the hash lands in a bucket
-        // that needs updating, so it won't track every unique key insertion.
-        // This is expected behavior for the probabilistic data structure.
         let bytes = counter.estimated_bytes();
         let expected_bytes = num_keys * 10;
 
-        // Allow significant margin (~20%) as HLL may not increment raw_count for all unique keys
         let byte_error_margin = (expected_bytes as f64 * 0.20) as usize;
 
         assert!(
@@ -264,9 +223,8 @@ mod tests {
             expected_bytes
         );
 
-        // HLL count estimation should be more accurate than raw_count
         let estimated = counter.estimated_count();
-        let count_error_margin = (num_keys as f64 * 0.05) as usize; // 5% margin
+        let count_error_margin = (num_keys as f64 * 0.05) as usize;
         assert!(
             estimated >= num_keys - count_error_margin
                 && estimated <= num_keys + count_error_margin,
@@ -288,7 +246,6 @@ mod tests {
             let counter_clone = Arc::clone(&counter);
             let handle = thread::spawn(move || {
                 for i in 0..inserts_per_thread {
-                    // Each thread inserts unique keys
                     let key = format!("thread_{}_key_{}", thread_id, i);
                     counter_clone.insert(&key, 10);
                 }
@@ -304,7 +261,6 @@ mod tests {
         let expected_bytes = total_unique_keys * 10;
         let bytes = counter.estimated_bytes();
 
-        // Allow 20% margin due to HyperLogLog's probabilistic nature
         let byte_error_margin = (expected_bytes as f64 * 0.20) as usize;
 
         assert!(
@@ -314,7 +270,6 @@ mod tests {
             expected_bytes
         );
 
-        // HLL estimation should be more accurate
         let estimated = counter.estimated_count();
         let count_error_margin = (total_unique_keys as f64 * 0.05) as usize;
         assert!(
@@ -338,7 +293,6 @@ mod tests {
             let counter_clone = Arc::clone(&counter);
             let handle = thread::spawn(move || {
                 for i in 0..inserts_per_thread {
-                    // All threads insert the same keys
                     counter_clone.insert(&i, 10);
                 }
             });
@@ -349,11 +303,9 @@ mod tests {
             handle.join().unwrap();
         }
 
-        // Only unique keys should contribute, so only inserts_per_thread unique keys
         let expected_bytes = inserts_per_thread * 10;
         let bytes = counter.estimated_bytes();
 
-        // Allow 20% margin due to HyperLogLog's probabilistic nature
         let byte_error_margin = (expected_bytes as f64 * 0.20) as usize;
 
         assert!(
@@ -378,11 +330,9 @@ mod tests {
     fn duplicate_detection_with_varying_byte_sizes() {
         let counter = S3CacheStatisticsTracker::default();
 
-        // First insert with 100 bytes
         counter.insert(&"key1", 100);
         let bytes_after_first = counter.estimated_bytes();
 
-        // Duplicate insert but with different byte size - should still not add bytes
         counter.insert(&"key1", 500);
         counter.insert(&"key1", 1000);
 

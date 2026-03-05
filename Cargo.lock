@@ -2354,6 +2354,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "106dd99e98437432fed6519dedecfade6a06a73bb7b2a1e019fdd2bee5778d94"
 
 [[package]]
+name = "psqr"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "830e7594a6a805daa129026b94bc27be082140207fb392931bd2f7a9612f51d9"
+
+[[package]]
 name = "quick-xml"
 version = "0.37.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2701,6 +2707,7 @@ dependencies = [
  "opentelemetry-stdout",
  "opentelemetry_sdk",
  "prometheus",
+ "psqr",
  "rand",
  "rand_distr",
  "s3s",

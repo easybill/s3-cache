@@ -5,13 +5,16 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use hyperloglockless::AtomicHyperLogLog;
 
 use self::mean_variance::MeanVarianceTracker;
+use self::median::EstimatedMedianTracker;
 
 mod mean_variance;
+mod median;
 
 pub struct S3CacheStatisticsManager {
     hll: AtomicHyperLogLog,
     bytes: AtomicUsize,
-    welford: Mutex<MeanVarianceTracker>,
+    mean_variance: Mutex<MeanVarianceTracker>,
+    median: Mutex<EstimatedMedianTracker>,
 }
 
 impl Default for S3CacheStatisticsManager {
@@ -23,6 +26,12 @@ impl Default for S3CacheStatisticsManager {
 impl S3CacheStatisticsManager {
     pub const DEFAULT_FALSE_POSITIVE_RATE: f64 = 0.005;
 
+    /// Step size (bytes) used by the median estimator.
+    ///
+    /// A 1 KiB step works well for typical S3 object sizes; adjust if your
+    /// workload has a very different scale.
+    pub const DEFAULT_MEDIAN_ETA: f64 = 1024.0;
+
     pub fn new(false_positive_rate: f64) -> Self {
         let seed_bytes: [u8; 16] = core::array::from_fn(|i| (i + 1) as u8);
         let seed = u128::from_ne_bytes(seed_bytes);
@@ -33,7 +42,12 @@ impl S3CacheStatisticsManager {
         Self {
             hll,
             bytes: AtomicUsize::new(0),
-            welford: Mutex::new(MeanVarianceTracker::new()),
+            mean_variance: Mutex::new(MeanVarianceTracker::new()),
+            median: Mutex::new(EstimatedMedianTracker::new(
+                0.0,
+                0.5,
+                Self::DEFAULT_MEDIAN_ETA,
+            )),
         }
     }
 
@@ -49,7 +63,8 @@ impl S3CacheStatisticsManager {
             self.bytes.fetch_add(bytes, Ordering::Relaxed);
 
             let x = bytes as f64;
-            self.welford.lock().unwrap().update(x);
+            self.mean_variance.lock().unwrap().update(x);
+            self.median.lock().unwrap().update(x);
         }
     }
 
@@ -63,14 +78,19 @@ impl S3CacheStatisticsManager {
 
     /// Mean object size in bytes across all uniquely inserted objects.
     pub fn mean_object_size(&self) -> f64 {
-        self.welford.lock().unwrap().mean()
+        self.mean_variance.lock().unwrap().mean()
     }
 
     /// Population variance of object sizes in bytes².
     ///
     /// Returns `None` when no objects have been inserted yet.
     pub fn variance_object_size(&self) -> Option<f64> {
-        self.welford.lock().unwrap().variance()
+        self.mean_variance.lock().unwrap().variance()
+    }
+
+    /// Estimated median object size in bytes (SGD quantile estimator).
+    pub fn estimated_median_object_size(&self) -> f64 {
+        self.median.lock().unwrap().estimate()
     }
 }
 
@@ -88,6 +108,23 @@ mod tests {
         assert_eq!(counter.estimated_count(), 0);
         assert_eq!(counter.mean_object_size(), 0.0);
         assert_eq!(counter.variance_object_size(), None);
+        assert_eq!(counter.estimated_median_object_size(), 0.0);
+    }
+
+    #[test]
+    fn mean_ignores_duplicate_keys() {
+        let counter = S3CacheStatisticsManager::default();
+        counter.insert(&"key1", 100);
+        let mean_after_first = counter.mean_object_size();
+
+        counter.insert(&"key1", 999);
+        counter.insert(&"key1", 999);
+
+        assert_eq!(
+            counter.mean_object_size(),
+            mean_after_first,
+            "duplicate inserts must not affect mean"
+        );
     }
 
     #[test]

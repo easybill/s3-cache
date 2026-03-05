@@ -1,11 +1,17 @@
 use std::hash::Hash;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use hyperloglockless::AtomicHyperLogLog;
 
+use self::mean_variance::MeanVarianceTracker;
+
+mod mean_variance;
+
 pub struct S3CacheStatisticsManager {
     hll: AtomicHyperLogLog,
     bytes: AtomicUsize,
+    welford: Mutex<MeanVarianceTracker>,
 }
 
 impl Default for S3CacheStatisticsManager {
@@ -24,9 +30,11 @@ impl S3CacheStatisticsManager {
         let precision = hyperloglockless::precision_for_error(false_positive_rate);
         let hll = AtomicHyperLogLog::seeded(precision, seed);
 
-        let bytes = AtomicUsize::new(0);
-
-        Self { hll, bytes }
+        Self {
+            hll,
+            bytes: AtomicUsize::new(0),
+            welford: Mutex::new(MeanVarianceTracker::new()),
+        }
     }
 
     pub fn insert<T>(&self, key: &T, bytes: usize)
@@ -39,6 +47,9 @@ impl S3CacheStatisticsManager {
 
         if count_before < count_after {
             self.bytes.fetch_add(bytes, Ordering::Relaxed);
+
+            let x = bytes as f64;
+            self.welford.lock().unwrap().update(x);
         }
     }
 
@@ -48,6 +59,18 @@ impl S3CacheStatisticsManager {
 
     pub fn estimated_count(&self) -> usize {
         self.hll.count()
+    }
+
+    /// Mean object size in bytes across all uniquely inserted objects.
+    pub fn mean_object_size(&self) -> f64 {
+        self.welford.lock().unwrap().mean()
+    }
+
+    /// Population variance of object sizes in bytes².
+    ///
+    /// Returns `None` when no objects have been inserted yet.
+    pub fn variance_object_size(&self) -> Option<f64> {
+        self.welford.lock().unwrap().variance()
     }
 }
 
@@ -63,6 +86,8 @@ mod tests {
         let counter = S3CacheStatisticsManager::default();
         assert_eq!(counter.estimated_bytes(), 0);
         assert_eq!(counter.estimated_count(), 0);
+        assert_eq!(counter.mean_object_size(), 0.0);
+        assert_eq!(counter.variance_object_size(), None);
     }
 
     #[test]

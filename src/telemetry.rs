@@ -424,6 +424,6 @@ pub(crate) fn record_counter_estimates(unique_count: usize, unique_bytes: usize)
 
     CACHE_ESTIMATED_UNIQUE_KEYS.add(delta_keys, &[]);
     CACHE_ESTIMATED_UNIQUE_BYTES.add(delta_bytes, &[]);
-    PROM_CACHE_UNIQUE_KEYS_ESTIMATE.inc_by(delta_keys as u64);
-    PROM_CACHE_UNIQUE_BYTES_ESTIMATE.inc_by(delta_bytes as u64);
+    PROM_CACHE_UNIQUE_KEYS_ESTIMATE.inc_by(delta_keys);
+    PROM_CACHE_UNIQUE_BYTES_ESTIMATE.inc_by(delta_bytes);
 }

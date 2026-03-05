@@ -34,6 +34,7 @@ hyper-util = { version = "0.1", features = [
     "tokio",
 ] }
 hyperloglockless = "0.5.0"
+psqr = "0.1"
 opentelemetry = { version = "0.31", default-features = false, features = [
     "logs",
     "metrics",

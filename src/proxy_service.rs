@@ -9,9 +9,9 @@ use tracing::{debug, error, warn};
 use crate::s3_cache::{CacheKey, CachedObject, CachedObjectBody, S3Cache};
 use crate::telemetry;
 
-use self::counter::CachingCounter;
+use self::statistics::S3CacheStatisticsManager;
 
-mod counter;
+mod statistics;
 
 /// Generic caching proxy that wraps any S3 implementation.
 ///
@@ -24,7 +24,7 @@ pub struct CachingProxy<T = Proxy> {
     inner: T,
     cache: Option<Arc<S3Cache>>,
     max_cacheable_size: usize,
-    counter: CachingCounter,
+    statistics: S3CacheStatisticsManager,
     hash_builder: RandomState,
     /// Dry-run mode: the cache is populated and checked, but get_object always
     /// returns the fresh upstream response. On cache hit the cached body is
@@ -44,14 +44,14 @@ impl<T> CachingProxy<T> {
         max_cacheable_size: usize,
         dry_run: bool,
     ) -> Self {
-        let counter = CachingCounter::default();
+        let statistics = S3CacheStatisticsManager::default();
         let hash_builder = RandomState::new();
 
         Self {
             inner,
             cache,
             max_cacheable_size,
-            counter,
+            statistics,
             hash_builder,
             dry_run,
         }
@@ -61,14 +61,14 @@ impl<T> CachingProxy<T> {
     ///
     /// Uses a HyperLogLog probabilistic counter for memory-efficient estimation.
     pub fn estimated_unique_count(&self) -> usize {
-        self.counter.estimated_count()
+        self.statistics.estimated_count()
     }
 
     /// Returns the estimated total bytes of unique objects accessed.
     ///
     /// Uses a HyperLogLog probabilistic counter for memory-efficient estimation.
     pub fn estimated_unique_bytes(&self) -> usize {
-        self.counter.estimated_bytes()
+        self.statistics.estimated_bytes()
     }
 }
 
@@ -133,10 +133,10 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
                 telemetry::record_cache_hit_bytes(cached.content_length() as u64);
                 cache.report_stats().await;
 
-                self.counter.insert(&key, cached.content_length());
+                self.statistics.insert(&key, cached.content_length());
                 telemetry::record_counter_estimates(
-                    self.counter.estimated_count(),
-                    self.counter.estimated_bytes(),
+                    self.statistics.estimated_count(),
+                    self.statistics.estimated_bytes(),
                 );
 
                 if !self.dry_run {
@@ -174,11 +174,11 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
 
         let max_cacheable_size = self.max_cacheable_size;
 
-        self.counter
+        self.statistics
             .insert(&key, output.content_length.unwrap_or(0) as usize);
         telemetry::record_counter_estimates(
-            self.counter.estimated_count(),
-            self.counter.estimated_bytes(),
+            self.statistics.estimated_count(),
+            self.statistics.estimated_bytes(),
         );
 
         // Check if object is too large to cache based on Content-Length

@@ -192,6 +192,7 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
                 max_cacheable_size,
                 "object too large to cache, streaming through"
             );
+            telemetry::record_cache_oversized();
             // Stream through without caching
             return Ok(S3Response::new(output));
         }
@@ -296,6 +297,7 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
                     "object exceeded size limit during buffering, stream consumed"
                 );
                 telemetry::record_buffering_error();
+                telemetry::record_cache_oversized();
                 Err(s3_error!(
                     InternalError,
                     "Object exceeded size limit during buffering"

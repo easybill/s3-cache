@@ -68,6 +68,18 @@ static PROM_CACHE_MISS_BYTES: LazyLock<IntCounter> = LazyLock::new(|| {
     counter
 });
 
+static PROM_CACHE_OVERSIZED: LazyLock<IntCounter> = LazyLock::new(|| {
+    let counter = IntCounter::new(
+        "cache_oversized_total",
+        "Total number of objects encountered exceeding max_cacheable_size",
+    )
+    .unwrap();
+    PROMETHEUS_REGISTRY
+        .register(Box::new(counter.clone()))
+        .unwrap();
+    counter
+});
+
 static PROM_CACHE_INVALIDATION: LazyLock<IntCounter> = LazyLock::new(|| {
     let counter =
         IntCounter::new("cache_invalidation_total", "Number of cache invalidations").unwrap();
@@ -301,6 +313,13 @@ static CACHE_MISS_BYTES: LazyLock<Counter<u64>> = LazyLock::new(|| {
         .build()
 });
 
+static CACHE_OVERSIZED: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    opentelemetry::global::meter(CARGO_CRATE_NAME)
+        .u64_counter("cache.total_oversized")
+        .with_description("Total number of objects encountered exceeding max_cacheable_size")
+        .build()
+});
+
 pub(crate) fn record_cache_hit() {
     CACHE_HIT.add(1, &[]);
     PROM_CACHE_HIT.inc();
@@ -319,6 +338,11 @@ pub(crate) fn record_cache_miss() {
 pub(crate) fn record_cache_miss_bytes(bytes: u64) {
     CACHE_MISS_BYTES.add(bytes, &[]);
     PROM_CACHE_MISS_BYTES.inc_by(bytes);
+}
+
+pub(crate) fn record_cache_oversized() {
+    CACHE_OVERSIZED.add(1, &[]);
+    PROM_CACHE_OVERSIZED.inc();
 }
 
 pub(crate) fn record_cache_invalidation() {

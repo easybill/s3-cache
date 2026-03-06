@@ -14,11 +14,8 @@ use crate::telemetry;
 /// This task periodically writes metrics to a text file in Prometheus format,
 /// which can be read by node_exporter's textfile collector.
 ///
-/// # Arguments
-/// * `textfile_dir` - Directory where metrics file will be written
-/// * `caching_proxy` - Arc reference to the CachingProxy for accessing probabilistic counters
-///
 /// # Behavior
+///
 /// - Writes metrics every 10 seconds
 /// - Uses atomic file operations (write to .tmp, then rename)
 /// - Continues running even if individual writes fail

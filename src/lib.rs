@@ -66,22 +66,14 @@ pub type Result<T> = std::result::Result<T, ApplicationError>;
 
 static CARGO_CRATE_NAME: &str = env!("CARGO_CRATE_NAME");
 
-/// Starts the S3 caching proxy server.
+/// Starts the S3 caching proxy server, returning `Ok(())` on successful shutdown,
+/// or an error if startup or initialization fails.
 ///
 /// This function initializes telemetry, connects to the upstream S3 service,
 /// creates the cache, and starts an HTTP server to handle S3 requests.
 ///
 /// The server will run until it receives a SIGINT (Ctrl+C) signal, at which
 /// point it will perform a graceful shutdown with a 10-second timeout.
-///
-/// # Arguments
-///
-/// * `config` - Configuration for the proxy server
-///
-/// # Returns
-///
-/// Returns `Ok(())` on successful shutdown, or an error if startup or
-/// initialization fails.
 ///
 /// # Example
 ///
@@ -116,13 +108,6 @@ pub async fn start_app(config: Config) -> Result<()> {
 /// TCP listener is bound (before the first connection is accepted). This makes it
 /// suitable for embedding the server in integration tests where the caller needs to
 /// know the actual port (e.g., when binding to `127.0.0.1:0`).
-///
-/// # Arguments
-///
-/// * `config` - Configuration for the proxy server
-/// * `shutdown` - Future that resolves when the server should begin graceful shutdown
-/// * `addr_tx` - Oneshot sender that receives the bound [`SocketAddr`] once the listener
-///   is ready. If the receiver has already been dropped this send is silently ignored.
 pub async fn start_app_with_shutdown<F>(
     config: Config,
     shutdown: F,

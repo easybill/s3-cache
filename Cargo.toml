@@ -3,6 +3,7 @@ name = "s3-cache"
 license = "MIT"
 version = "0.1.7"
 edition = "2024"
+rust-version = "1.88"
 
 [[bin]]
 name = "s3_cache"

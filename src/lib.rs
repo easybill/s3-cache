@@ -104,6 +104,33 @@ static CARGO_CRATE_NAME: &str = env!("CARGO_CRATE_NAME");
 /// # }
 /// ```
 pub async fn start_app(config: Config) -> Result<()> {
+    let (addr_tx, _) = tokio::sync::oneshot::channel();
+    let shutdown = async { tokio::signal::ctrl_c().await.expect("ctrl_c failed") };
+    start_app_with_shutdown(config, shutdown, addr_tx).await
+}
+
+/// Starts the S3 caching proxy server with a custom shutdown signal.
+///
+/// Unlike [`start_app`], this function accepts an arbitrary future as the shutdown
+/// trigger and reports the bound [`SocketAddr`] via `addr_tx` immediately after the
+/// TCP listener is bound (before the first connection is accepted). This makes it
+/// suitable for embedding the server in integration tests where the caller needs to
+/// know the actual port (e.g., when binding to `127.0.0.1:0`).
+///
+/// # Arguments
+///
+/// * `config` - Configuration for the proxy server
+/// * `shutdown` - Future that resolves when the server should begin graceful shutdown
+/// * `addr_tx` - Oneshot sender that receives the bound [`SocketAddr`] once the listener
+///   is ready. If the receiver has already been dropped this send is silently ignored.
+pub async fn start_app_with_shutdown<F>(
+    config: Config,
+    shutdown: F,
+    addr_tx: tokio::sync::oneshot::Sender<std::net::SocketAddr>,
+) -> Result<()>
+where
+    F: std::future::Future<Output = ()> + Send + 'static,
+{
     let (metrics_provider, logs_provider) = telemetry::initialize_telemetry(&config)?;
 
     info!("Starting {CARGO_CRATE_NAME} with {config}");
@@ -182,11 +209,15 @@ pub async fn start_app(config: Config) -> Result<()> {
 
     // Start hyper server
     let listener = TcpListener::bind(config.listen_addr).await?;
+    // Report the bound address before entering the accept loop so callers using
+    // port 0 can discover which port was assigned.
+    let _ = addr_tx.send(listener.local_addr()?);
+
     let http_server = ConnBuilder::new(TokioExecutor::new());
     let graceful = hyper_util::server::graceful::GracefulShutdown::new();
-    let mut ctrl_c = std::pin::pin!(tokio::signal::ctrl_c());
+    let mut shutdown = std::pin::pin!(shutdown);
 
-    info!("Listening on http://{}/", config.listen_addr);
+    info!("Listening on http://{}/", listener.local_addr()?);
 
     loop {
         let (socket, remote_addr) = tokio::select! {
@@ -199,7 +230,7 @@ pub async fn start_app(config: Config) -> Result<()> {
                     }
                 }
             }
-            _ = ctrl_c.as_mut() => { break; }
+            _ = shutdown.as_mut() => { break; }
         };
 
         debug!("Accepted connection from {remote_addr}");

@@ -132,7 +132,10 @@ pub(crate) fn initialize_telemetry(
 
     match logs_provider.as_ref() {
         None => {
-            tracing_subscriber::fmt().with_env_filter(filter).init();
+            tracing_subscriber::fmt()
+                .with_env_filter(filter)
+                .try_init()
+                .ok();
         }
         Some(logs_provider) => {
             let otel_layer = OpenTelemetryTracingBridge::new(logs_provider);
@@ -140,7 +143,8 @@ pub(crate) fn initialize_telemetry(
                 .with(filter)
                 .with(tracing_subscriber::fmt::layer())
                 .with(otel_layer)
-                .init();
+                .try_init()
+                .ok();
         }
     }
 

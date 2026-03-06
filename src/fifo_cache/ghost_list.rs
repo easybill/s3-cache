@@ -13,7 +13,7 @@ impl<K: Clone + Eq + Hash> GhostList<K> {
         Self {
             map: HashSet::new(),
             queue: VecDeque::new(),
-            max_len: max_len,
+            max_len,
         }
     }
 

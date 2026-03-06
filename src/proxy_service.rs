@@ -181,8 +181,8 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
         );
 
         // Check if object is too large to cache based on Content-Length
-        if let Some(content_length) = output.content_length {
-            if (content_length as u64) > (max_cacheable_size as u64) {
+        if let Some(content_length) = output.content_length
+            && (content_length as u64) > (max_cacheable_size as u64) {
                 debug!(
                     bucket = %bucket,
                     key = %key,
@@ -193,7 +193,6 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
                 // Stream through without caching
                 return Ok(S3Response::new(output));
             }
-        }
 
         // Try to buffer and cache the response body
         let Some(body_blob) = output.body else {
@@ -216,8 +215,8 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
                 };
 
                 // In dry-run mode, compare the fresh body against the cached one
-                if self.dry_run {
-                    if let Some(cached_hit) = &cached_hit {
+                if self.dry_run
+                    && let Some(cached_hit) = &cached_hit {
                         if cached_hit.content_type() != output.content_type.as_ref()
                             || cached_hit.e_tag() != output.e_tag.as_ref()
                             || cached_hit.last_modified() != output.last_modified.as_ref()
@@ -237,7 +236,6 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
                             debug!(bucket = %bucket, key = %key, "dry-run: cached object matches upstream");
                         }
                     }
-                }
 
                 let cached = CachedObject::new(
                     body,

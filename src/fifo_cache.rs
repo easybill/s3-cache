@@ -252,9 +252,7 @@ impl<K: Clone + Eq + Hash, V> FifoCache<K, V> {
     /// assert_eq!(cache.remove(&"key1".to_string()), None);
     /// ```
     pub fn remove(&mut self, key: &K) -> Option<V> {
-        let Some(entry) = self.values.remove(key) else {
-            return None;
-        };
+        let entry = self.values.remove(key)?;
 
         Some(entry.into_value())
     }

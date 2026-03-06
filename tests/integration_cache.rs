@@ -5,7 +5,6 @@ use common::MockS3Backend;
 use common::helpers::*;
 use s3_cache::{CacheKey, CachingProxy, SharedCachingProxy};
 use s3s::S3;
-use std::usize;
 
 #[tokio::test]
 async fn get_object_cache_miss_then_hit() {
@@ -263,7 +262,7 @@ async fn concurrent_cache_access() {
     // Backend should be called at least once, but not necessarily 10 times
     // (some requests may hit cache if first request completes first)
     let count = backend.get_request_count().await;
-    assert!(count >= 1 && count <= 10);
+    assert!((1..=10).contains(&count));
 
     // Object should be cached
     assert_cache_contains(&cache, "test-bucket", "concurrent.txt").await;

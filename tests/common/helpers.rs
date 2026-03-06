@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use bytes::Bytes;
 use http::{HeaderMap, Method, Uri};
 use s3_cache::{S3Cache, CacheKey};

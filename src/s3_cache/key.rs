@@ -63,12 +63,12 @@ impl CacheKey {
 
     /// Returns the range string, if any (e.g., `"bytes=0-1023"`).
     pub fn range(&self) -> Option<&str> {
-        self.state.range.as_ref().map(|s| s.as_str())
+        self.state.range.as_deref()
     }
 
     /// Returns the object version ID, if any.
     pub fn version_id(&self) -> Option<&str> {
-        self.state.version_id.as_ref().map(|s| s.as_str())
+        self.state.version_id.as_deref()
     }
 
     /// Returns `true` if this key matches the given bucket and object key.

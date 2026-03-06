@@ -1,4 +1,10 @@
-use std::{sync::LazyLock, time::Duration};
+use std::{
+    sync::{
+        LazyLock,
+        atomic::{AtomicU64, Ordering},
+    },
+    time::Duration,
+};
 
 use opentelemetry::metrics::{Counter, Gauge};
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
@@ -96,28 +102,28 @@ static PROM_CACHE_OBJECT_COUNT: LazyLock<IntGauge> = LazyLock::new(|| {
     gauge
 });
 
-static PROM_CACHE_UNIQUE_KEYS_ESTIMATE: LazyLock<IntGauge> = LazyLock::new(|| {
-    let gauge = IntGauge::new(
-        "cache_unique_keys_estimate",
-        "Estimated number of unique keys accessed (using HyperLogLog)",
+static PROM_CACHE_UNIQUE_KEYS_ESTIMATE: LazyLock<IntCounter> = LazyLock::new(|| {
+    let counter = IntCounter::new(
+        "cache_estimated_unique_keys_total",
+        "Estimated number of unique keys accessed",
     )
     .unwrap();
     PROMETHEUS_REGISTRY
-        .register(Box::new(gauge.clone()))
+        .register(Box::new(counter.clone()))
         .unwrap();
-    gauge
+    counter
 });
 
-static PROM_CACHE_UNIQUE_BYTES_ESTIMATE: LazyLock<IntGauge> = LazyLock::new(|| {
-    let gauge = IntGauge::new(
-        "cache_unique_bytes_estimate",
+static PROM_CACHE_UNIQUE_BYTES_ESTIMATE: LazyLock<IntCounter> = LazyLock::new(|| {
+    let counter = IntCounter::new(
+        "cache_estimated_unique_bytes_total",
         "Estimated total bytes for unique keys accessed",
     )
     .unwrap();
     PROMETHEUS_REGISTRY
-        .register(Box::new(gauge.clone()))
+        .register(Box::new(counter.clone()))
         .unwrap();
-    gauge
+    counter
 });
 
 pub(crate) fn initialize_telemetry(
@@ -317,23 +323,35 @@ pub(crate) fn record_cache_stats(object_count: usize, size_bytes: usize) {
     PROM_CACHE_OBJECT_COUNT.set(object_count as i64);
 }
 
-static CACHE_ESTIMATED_UNIQUE_KEYS: LazyLock<Gauge<u64>> = LazyLock::new(|| {
+static CACHE_ESTIMATED_UNIQUE_KEYS: LazyLock<Counter<u64>> = LazyLock::new(|| {
     opentelemetry::global::meter(CARGO_CRATE_NAME)
-        .u64_gauge("cache.estimated_unique_keys")
-        .with_description("Estimated number of unique keys accessed (using HyperLogLog)")
+        .u64_counter("cache.estimated_unique_keys_total")
+        .with_description("Estimated number of unique keys accessed")
         .build()
 });
 
-static CACHE_ESTIMATED_UNIQUE_BYTES: LazyLock<Gauge<u64>> = LazyLock::new(|| {
+static CACHE_ESTIMATED_UNIQUE_BYTES: LazyLock<Counter<u64>> = LazyLock::new(|| {
     opentelemetry::global::meter(CARGO_CRATE_NAME)
-        .u64_gauge("cache.estimated_unique_bytes")
+        .u64_counter("cache.estimated_unique_bytes_total")
         .with_description("Estimated total bytes for unique keys accessed")
         .build()
 });
 
+static LAST_UNIQUE_KEYS: AtomicU64 = AtomicU64::new(0);
+static LAST_UNIQUE_BYTES: AtomicU64 = AtomicU64::new(0);
+
 pub(crate) fn record_counter_estimates(unique_count: usize, unique_bytes: usize) {
-    CACHE_ESTIMATED_UNIQUE_KEYS.record(unique_count as u64, &[]);
-    CACHE_ESTIMATED_UNIQUE_BYTES.record(unique_bytes as u64, &[]);
-    PROM_CACHE_UNIQUE_KEYS_ESTIMATE.set(unique_count as i64);
-    PROM_CACHE_UNIQUE_BYTES_ESTIMATE.set(unique_bytes as i64);
+    let new_keys = unique_count as u64;
+    let new_bytes = unique_bytes as u64;
+
+    let prev_keys = LAST_UNIQUE_KEYS.swap(new_keys, Ordering::Relaxed);
+    let prev_bytes = LAST_UNIQUE_BYTES.swap(new_bytes, Ordering::Relaxed);
+
+    let delta_keys = new_keys.saturating_sub(prev_keys);
+    let delta_bytes = new_bytes.saturating_sub(prev_bytes);
+
+    CACHE_ESTIMATED_UNIQUE_KEYS.add(delta_keys, &[]);
+    CACHE_ESTIMATED_UNIQUE_BYTES.add(delta_bytes, &[]);
+    PROM_CACHE_UNIQUE_KEYS_ESTIMATE.inc_by(delta_keys as u64);
+    PROM_CACHE_UNIQUE_BYTES_ESTIMATE.inc_by(delta_bytes as u64);
 }

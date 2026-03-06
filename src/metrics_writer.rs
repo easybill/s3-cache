@@ -42,9 +42,16 @@ pub async fn start_metrics_writer(
         let unique_bytes = caching_proxy.estimated_unique_bytes();
         telemetry::record_counter_estimates(unique_count, unique_bytes);
 
+        let mean = caching_proxy.mean_object_size();
+        let variance = caching_proxy.variance_object_size();
+        let estimated_median = caching_proxy.estimated_median_object_size();
+        telemetry::record_object_size_distribution(mean, variance, estimated_median);
+
         debug!(
             unique_count = unique_count,
             unique_bytes = unique_bytes,
+            mean_object_size = mean,
+            estimated_median_object_size = estimated_median,
             "Updated probabilistic metrics"
         );
 

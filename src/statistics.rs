@@ -60,20 +60,24 @@ impl S3CacheStatisticsTracker {
     }
 
     /// Mean object size in bytes across all uniquely inserted objects.
-    pub fn mean_object_size(&self) -> f64 {
-        self.median.lock().unwrap().mean()
+    pub fn mean_object_size(&self) -> usize {
+        self.median.lock().unwrap().mean().round() as usize
     }
 
     /// Population variance of object sizes in bytes².
     ///
     /// Returns `None` when no objects have been inserted yet.
-    pub fn variance_object_size(&self) -> Option<f64> {
-        self.median.lock().unwrap().variance()
+    pub fn variance_object_size(&self) -> Option<usize> {
+        self.median
+            .lock()
+            .unwrap()
+            .variance()
+            .map(|v| v.round() as usize)
     }
 
     /// Estimated median object size in bytes (P² quantile estimator).
-    pub fn estimated_median_object_size(&self) -> f64 {
-        self.median.lock().unwrap().estimate_median()
+    pub fn estimated_median_object_size(&self) -> usize {
+        self.median.lock().unwrap().estimate_median().round() as usize
     }
 }
 
@@ -89,7 +93,7 @@ mod tests {
         let counter = S3CacheStatisticsTracker::default();
         assert_eq!(counter.estimated_bytes(), 0);
         assert_eq!(counter.estimated_count(), 0);
-        assert_eq!(counter.mean_object_size(), 0.0);
+        assert_eq!(counter.mean_object_size(), 0);
         assert_eq!(counter.variance_object_size(), None);
     }
 

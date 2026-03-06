@@ -162,6 +162,42 @@ static PROM_CACHE_UNIQUE_BYTES_ESTIMATE: LazyLock<IntCounter> = LazyLock::new(||
     counter
 });
 
+static PROM_CACHE_MEAN_OBJECT_SIZE: LazyLock<IntGauge> = LazyLock::new(|| {
+    let gauge = IntGauge::new(
+        "cache_mean_object_size_bytes",
+        "Mean size of unique cached objects in bytes",
+    )
+    .unwrap();
+    PROMETHEUS_REGISTRY
+        .register(Box::new(gauge.clone()))
+        .unwrap();
+    gauge
+});
+
+static PROM_CACHE_VARIANCE_OBJECT_SIZE: LazyLock<IntGauge> = LazyLock::new(|| {
+    let gauge = IntGauge::new(
+        "cache_variance_object_size_bytes_squared",
+        "Population variance of unique cached object sizes in bytes squared",
+    )
+    .unwrap();
+    PROMETHEUS_REGISTRY
+        .register(Box::new(gauge.clone()))
+        .unwrap();
+    gauge
+});
+
+static PROM_CACHE_ESTIMATED_MEDIAN_OBJECT_SIZE: LazyLock<IntGauge> = LazyLock::new(|| {
+    let gauge = IntGauge::new(
+        "cache_estimated_median_object_size_bytes",
+        "Estimated median size of unique cached objects in bytes (P² algorithm)",
+    )
+    .unwrap();
+    PROMETHEUS_REGISTRY
+        .register(Box::new(gauge.clone()))
+        .unwrap();
+    gauge
+});
+
 pub(crate) fn initialize_telemetry(
     config: &Config,
 ) -> crate::Result<(
@@ -426,4 +462,38 @@ pub(crate) fn record_counter_estimates(unique_count: usize, unique_bytes: usize)
     CACHE_ESTIMATED_UNIQUE_BYTES.add(delta_bytes, &[]);
     PROM_CACHE_UNIQUE_KEYS_ESTIMATE.inc_by(delta_keys);
     PROM_CACHE_UNIQUE_BYTES_ESTIMATE.inc_by(delta_bytes);
+}
+
+static CACHE_MEAN_OBJECT_SIZE: LazyLock<Gauge<u64>> = LazyLock::new(|| {
+    opentelemetry::global::meter(CARGO_CRATE_NAME)
+        .u64_gauge("cache.mean_object_size_bytes")
+        .with_description("Mean size of unique cached objects in bytes")
+        .build()
+});
+
+static CACHE_VARIANCE_OBJECT_SIZE: LazyLock<Gauge<u64>> = LazyLock::new(|| {
+    opentelemetry::global::meter(CARGO_CRATE_NAME)
+        .u64_gauge("cache.variance_object_size_bytes_squared")
+        .with_description("Population variance of unique cached object sizes in bytes squared")
+        .build()
+});
+
+static CACHE_ESTIMATED_MEDIAN_OBJECT_SIZE: LazyLock<Gauge<u64>> = LazyLock::new(|| {
+    opentelemetry::global::meter(CARGO_CRATE_NAME)
+        .u64_gauge("cache.estimated_median_object_size_bytes")
+        .with_description("Estimated median size of unique cached objects in bytes (P² algorithm)")
+        .build()
+});
+
+pub(crate) fn record_object_size_distribution(
+    mean: usize,
+    variance: Option<usize>,
+    estimated_median: usize,
+) {
+    CACHE_MEAN_OBJECT_SIZE.record(mean as u64, &[]);
+    CACHE_VARIANCE_OBJECT_SIZE.record(variance.unwrap_or(0) as u64, &[]);
+    CACHE_ESTIMATED_MEDIAN_OBJECT_SIZE.record(estimated_median as u64, &[]);
+    PROM_CACHE_MEAN_OBJECT_SIZE.set(mean as i64);
+    PROM_CACHE_VARIANCE_OBJECT_SIZE.set(variance.unwrap_or(0) as i64);
+    PROM_CACHE_ESTIMATED_MEDIAN_OBJECT_SIZE.set(estimated_median as i64);
 }

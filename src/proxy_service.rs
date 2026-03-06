@@ -182,17 +182,18 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
 
         // Check if object is too large to cache based on Content-Length
         if let Some(content_length) = output.content_length
-            && (content_length as u64) > (max_cacheable_size as u64) {
-                debug!(
-                    bucket = %bucket,
-                    key = %key,
-                    size = content_length,
-                    max_cacheable_size,
-                    "object too large to cache, streaming through"
-                );
-                // Stream through without caching
-                return Ok(S3Response::new(output));
-            }
+            && (content_length as u64) > (max_cacheable_size as u64)
+        {
+            debug!(
+                bucket = %bucket,
+                key = %key,
+                size = content_length,
+                max_cacheable_size,
+                "object too large to cache, streaming through"
+            );
+            // Stream through without caching
+            return Ok(S3Response::new(output));
+        }
 
         // Try to buffer and cache the response body
         let Some(body_blob) = output.body else {
@@ -216,26 +217,27 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
 
                 // In dry-run mode, compare the fresh body against the cached one
                 if self.dry_run
-                    && let Some(cached_hit) = &cached_hit {
-                        if cached_hit.content_type() != output.content_type.as_ref()
-                            || cached_hit.e_tag() != output.e_tag.as_ref()
-                            || cached_hit.last_modified() != output.last_modified.as_ref()
-                            || cached_hit.body() != &body
-                        {
-                            error!(
-                                bucket = %cache_key.bucket(),
-                                key = %cache_key.key(),
-                                range = ?cache_key.range(),
-                                version_id = ?cache_key.version_id(),
-                                cached_len = cached_hit.content_length(),
-                                fresh_len = bytes.len(),
-                                "cache mismatch: cached object differs from upstream"
-                            );
-                            telemetry::record_cache_mismatch();
-                        } else {
-                            debug!(bucket = %bucket, key = %key, "dry-run: cached object matches upstream");
-                        }
+                    && let Some(cached_hit) = &cached_hit
+                {
+                    if cached_hit.content_type() != output.content_type.as_ref()
+                        || cached_hit.e_tag() != output.e_tag.as_ref()
+                        || cached_hit.last_modified() != output.last_modified.as_ref()
+                        || cached_hit.body() != &body
+                    {
+                        error!(
+                            bucket = %cache_key.bucket(),
+                            key = %cache_key.key(),
+                            range = ?cache_key.range(),
+                            version_id = ?cache_key.version_id(),
+                            cached_len = cached_hit.content_length(),
+                            fresh_len = bytes.len(),
+                            "cache mismatch: cached object differs from upstream"
+                        );
+                        telemetry::record_cache_mismatch();
+                    } else {
+                        debug!(bucket = %bucket, key = %key, "dry-run: cached object matches upstream");
                     }
+                }
 
                 let cached = CachedObject::new(
                     body,

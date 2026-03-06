@@ -3,18 +3,18 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use hyperloglockless::AtomicHyperLogLog;
 
-pub struct CachingCounter {
+pub struct S3CacheStatisticsManager {
     hll: AtomicHyperLogLog,
     bytes: AtomicUsize,
 }
 
-impl Default for CachingCounter {
+impl Default for S3CacheStatisticsManager {
     fn default() -> Self {
         Self::new(Self::DEFAULT_FALSE_POSITIVE_RATE)
     }
 }
 
-impl CachingCounter {
+impl S3CacheStatisticsManager {
     pub const DEFAULT_FALSE_POSITIVE_RATE: f64 = 0.005;
 
     pub fn new(false_positive_rate: f64) -> Self {
@@ -60,7 +60,7 @@ mod tests {
 
     #[test]
     fn default_creation() {
-        let counter = CachingCounter::default();
+        let counter = S3CacheStatisticsManager::default();
         assert_eq!(counter.estimated_bytes(), 0);
         assert_eq!(counter.estimated_count(), 0);
     }
@@ -68,14 +68,14 @@ mod tests {
     #[test]
     fn custom_false_positive_rate() {
         // Use 0.05 which should give a valid precision (within 4..=18)
-        let counter = CachingCounter::new(0.05);
+        let counter = S3CacheStatisticsManager::new(0.05);
         assert_eq!(counter.estimated_bytes(), 0);
         assert_eq!(counter.estimated_count(), 0);
     }
 
     #[test]
     fn insert_unique_keys() {
-        let counter = CachingCounter::default();
+        let counter = S3CacheStatisticsManager::default();
         let initial_bytes = counter.estimated_bytes();
 
         // Insert multiple unique keys
@@ -99,7 +99,7 @@ mod tests {
 
     #[test]
     fn duplicate_key_does_not_add_extra_estimated_bytes() {
-        let counter = CachingCounter::default();
+        let counter = S3CacheStatisticsManager::default();
 
         // Insert the same key multiple times
         counter.insert(&"duplicate_key", 100);
@@ -118,7 +118,7 @@ mod tests {
 
     #[test]
     fn mixed_unique_and_duplicate_keys() {
-        let counter = CachingCounter::default();
+        let counter = S3CacheStatisticsManager::default();
 
         counter.insert(&"key1", 100);
         counter.insert(&"key2", 200);
@@ -148,7 +148,7 @@ mod tests {
 
     #[test]
     fn different_types_as_keys() {
-        let counter = CachingCounter::default();
+        let counter = S3CacheStatisticsManager::default();
 
         counter.insert(&42i32, 50);
         counter.insert(&"string_key", 100);
@@ -164,7 +164,7 @@ mod tests {
 
     #[test]
     fn zero_byte_inserts() {
-        let counter = CachingCounter::default();
+        let counter = S3CacheStatisticsManager::default();
 
         counter.insert(&"key1", 0);
         counter.insert(&"key2", 0);
@@ -179,7 +179,7 @@ mod tests {
 
     #[test]
     fn large_number_of_unique_keys() {
-        let counter = CachingCounter::default();
+        let counter = S3CacheStatisticsManager::default();
         let num_keys = 10_000;
 
         for i in 0..num_keys {
@@ -216,7 +216,7 @@ mod tests {
 
     #[test]
     fn concurrent_inserts() {
-        let counter = Arc::new(CachingCounter::default());
+        let counter = Arc::new(S3CacheStatisticsManager::default());
         let num_threads = 4;
         let inserts_per_thread = 2500;
 
@@ -266,7 +266,7 @@ mod tests {
 
     #[test]
     fn concurrent_duplicate_inserts() {
-        let counter = Arc::new(CachingCounter::default());
+        let counter = Arc::new(S3CacheStatisticsManager::default());
         let num_threads = 4;
         let inserts_per_thread = 2500;
 
@@ -314,7 +314,7 @@ mod tests {
 
     #[test]
     fn duplicate_detection_with_varying_byte_sizes() {
-        let counter = CachingCounter::default();
+        let counter = S3CacheStatisticsManager::default();
 
         // First insert with 100 bytes
         counter.insert(&"key1", 100);

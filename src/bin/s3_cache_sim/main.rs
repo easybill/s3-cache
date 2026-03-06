@@ -220,7 +220,7 @@ async fn main() {
     eprintln!();
 
     // Partition workload across tasks
-    let chunk_size = (workload.len() + args.concurrency - 1) / args.concurrency;
+    let chunk_size = workload.len().div_ceil(args.concurrency);
     let chunks: Vec<Vec<usize>> = workload.chunks(chunk_size).map(|c| c.to_vec()).collect();
 
     let completed = Arc::new(AtomicU64::new(0));
@@ -254,7 +254,7 @@ async fn main() {
                 }
 
                 let done = completed.fetch_add(1, Ordering::Relaxed) + 1;
-                if progress_interval > 0 && done % (progress_interval as u64) == 0 {
+                if progress_interval > 0 && done.is_multiple_of(progress_interval as u64) {
                     let wall = start.elapsed().as_secs_f64();
                     let rps = done as f64 / wall;
                     eprintln!("[{wall:.1}s] {done}/{total_requests} requests ({rps:.0} req/s)");

@@ -49,6 +49,7 @@ impl CachedObject {
     /// Creates a new cached object with the given body and metadata.
     ///
     /// The `inserted_at` timestamp is set to the current time.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         body: CachedObjectBody,
         content_type: Option<ContentType>,

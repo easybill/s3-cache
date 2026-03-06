@@ -33,7 +33,7 @@ async fn range_requests_cached_separately() {
         first: 0,
         last: Some(4),
     };
-    let req = build_get_request("test-bucket", "file.txt", Some(range.clone()));
+    let req = build_get_request("test-bucket", "file.txt", Some(range));
     proxy.get_object(req).await.unwrap();
     assert_eq!(backend.get_request_count().await, 2); // Separate request
 
@@ -77,7 +77,7 @@ async fn overlapping_ranges_separate_cache() {
         first: 0,
         last: Some(4),
     };
-    let req = build_get_request("test-bucket", "data.bin", Some(range1.clone()));
+    let req = build_get_request("test-bucket", "data.bin", Some(range1));
     proxy.get_object(req).await.unwrap();
 
     // GET overlapping range 2-6
@@ -85,7 +85,7 @@ async fn overlapping_ranges_separate_cache() {
         first: 2,
         last: Some(6),
     };
-    let req = build_get_request("test-bucket", "data.bin", Some(range2.clone()));
+    let req = build_get_request("test-bucket", "data.bin", Some(range2));
     proxy.get_object(req).await.unwrap();
 
     // Should be 2 separate backend requests (not deduplicated)
@@ -128,7 +128,7 @@ async fn suffix_range_caching() {
 
     // GET last 5 bytes
     let range = Range::Suffix { length: 5 };
-    let req = build_get_request("test-bucket", "file.txt", Some(range.clone()));
+    let req = build_get_request("test-bucket", "file.txt", Some(range));
     proxy.get_object(req).await.unwrap();
     assert_eq!(backend.get_request_count().await, 1);
 
@@ -181,7 +181,7 @@ async fn range_invalidation_removes_all() {
     ];
 
     for range in &ranges {
-        let req = build_get_request("test-bucket", "multi-range.txt", Some(range.clone()));
+        let req = build_get_request("test-bucket", "multi-range.txt", Some(*range));
         proxy.get_object(req).await.unwrap();
     }
 

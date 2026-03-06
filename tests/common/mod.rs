@@ -17,6 +17,7 @@ pub struct MockS3Backend {
     delete_count: Arc<Mutex<u64>>,
 }
 
+#[allow(dead_code)]
 impl MockS3Backend {
     pub fn new() -> Self {
         Self {

@@ -6,10 +6,10 @@ use std::{
     time::Duration,
 };
 
-use opentelemetry::metrics::{Counter, Gauge};
+use opentelemetry::metrics::{Counter, Gauge, Histogram};
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
 use opentelemetry_otlp::{Compression, WithExportConfig, WithTonicConfig};
-use prometheus::{IntCounter, IntGauge, Registry};
+use prometheus::{HistogramOpts, IntCounter, IntGauge, Registry};
 use tracing::{error, info};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -196,6 +196,38 @@ static PROM_CACHE_ESTIMATED_MEDIAN_OBJECT_SIZE: LazyLock<IntGauge> = LazyLock::n
         .register(Box::new(gauge.clone()))
         .unwrap();
     gauge
+});
+
+static PROM_REQUEST_DURATION_MS: LazyLock<prometheus::Histogram> = LazyLock::new(|| {
+    let histogram = prometheus::Histogram::with_opts(
+        HistogramOpts::new(
+            "request_duration_ms",
+            "Duration of get_object requests in milliseconds",
+        )
+        .buckets(vec![
+            1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 2500.0, 5000.0, 10000.0,
+        ]),
+    )
+    .unwrap();
+    PROMETHEUS_REGISTRY
+        .register(Box::new(histogram.clone()))
+        .unwrap();
+    histogram
+});
+
+static PROM_RESPONSE_BODY_SIZE_BYTES: LazyLock<prometheus::Histogram> = LazyLock::new(|| {
+    let histogram = prometheus::Histogram::with_opts(
+        HistogramOpts::new(
+            "response_body_size_bytes",
+            "Size of get_object response bodies in bytes",
+        )
+        .buckets(prometheus::exponential_buckets(1024.0, 4.0, 10).unwrap()),
+    )
+    .unwrap();
+    PROMETHEUS_REGISTRY
+        .register(Box::new(histogram.clone()))
+        .unwrap();
+    histogram
 });
 
 pub(crate) fn initialize_telemetry(
@@ -484,6 +516,30 @@ static CACHE_ESTIMATED_MEDIAN_OBJECT_SIZE: LazyLock<Gauge<u64>> = LazyLock::new(
         .with_description("Estimated median size of unique cached objects in bytes (P² algorithm)")
         .build()
 });
+
+static REQUEST_DURATION_MS: LazyLock<Histogram<u64>> = LazyLock::new(|| {
+    opentelemetry::global::meter(CARGO_CRATE_NAME)
+        .u64_histogram("request.duration_ms")
+        .with_description("Duration of get_object requests in milliseconds")
+        .build()
+});
+
+static RESPONSE_BODY_SIZE: LazyLock<Histogram<u64>> = LazyLock::new(|| {
+    opentelemetry::global::meter(CARGO_CRATE_NAME)
+        .u64_histogram("response.body_size_bytes")
+        .with_description("Size of get_object response bodies in bytes")
+        .build()
+});
+
+pub(crate) fn record_request_duration(duration_ms: u64) {
+    REQUEST_DURATION_MS.record(duration_ms, &[]);
+    PROM_REQUEST_DURATION_MS.observe(duration_ms as f64);
+}
+
+pub(crate) fn record_response_body_size(bytes: u64) {
+    RESPONSE_BODY_SIZE.record(bytes, &[]);
+    PROM_RESPONSE_BODY_SIZE_BYTES.observe(bytes as f64);
+}
 
 pub(crate) fn record_object_size_distribution(
     mean: usize,

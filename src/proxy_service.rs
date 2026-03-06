@@ -1,5 +1,6 @@
 use std::hash::{BuildHasher, RandomState};
 use std::sync::Arc;
+use std::time::Instant;
 
 use s3s::dto::*;
 use s3s::{S3, S3Request, S3Response, S3Result, s3_error};
@@ -126,6 +127,7 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
         &self,
         req: S3Request<GetObjectInput>,
     ) -> S3Result<S3Response<GetObjectOutput>> {
+        let start = Instant::now();
         let bucket = req.input.bucket.clone();
         let key = req.input.key.clone();
         let range = req.input.range;
@@ -153,6 +155,8 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
                         panic!("expected bytes, found hash");
                     };
 
+                    telemetry::record_request_duration(start.elapsed().as_millis() as u64);
+                    telemetry::record_response_body_size(cached.content_length() as u64);
                     return Ok(S3Response::new(output));
                 }
 
@@ -177,6 +181,7 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
         let resp = self.inner.get_object(get_req).await.map_err(|err| {
             error!(bucket = %bucket, key = %key, error = %err, "upstream error on get_object");
             telemetry::record_upstream_error();
+            telemetry::record_request_duration(start.elapsed().as_millis() as u64);
             err
         })?;
         let output = resp.output;
@@ -203,11 +208,14 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
             );
             telemetry::record_cache_oversized();
             // Stream through without caching
+            telemetry::record_request_duration(start.elapsed().as_millis() as u64);
+            telemetry::record_response_body_size(content_length as u64);
             return Ok(S3Response::new(output));
         }
 
         // Try to buffer and cache the response body
         let Some(body_blob) = output.body else {
+            telemetry::record_request_duration(start.elapsed().as_millis() as u64);
             return Ok(S3Response::new(output));
         };
 
@@ -295,6 +303,8 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
                     storage_class: output.storage_class,
                     ..Default::default()
                 };
+                telemetry::record_request_duration(start.elapsed().as_millis() as u64);
+                telemetry::record_response_body_size(content_length as u64);
                 Ok(S3Response::new(new_output))
             }
             Err(_) => {
@@ -307,6 +317,7 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
                 );
                 telemetry::record_buffering_error();
                 telemetry::record_cache_oversized();
+                telemetry::record_request_duration(start.elapsed().as_millis() as u64);
                 Err(s3_error!(
                     InternalError,
                     "Object exceeded size limit during buffering"

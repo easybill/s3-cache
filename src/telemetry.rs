@@ -44,6 +44,30 @@ static PROM_CACHE_MISS: LazyLock<IntCounter> = LazyLock::new(|| {
     counter
 });
 
+static PROM_CACHE_HIT_BYTES: LazyLock<IntCounter> = LazyLock::new(|| {
+    let counter = IntCounter::new(
+        "cache_hit_bytes_total",
+        "Total bytes received from cache hits",
+    )
+    .unwrap();
+    PROMETHEUS_REGISTRY
+        .register(Box::new(counter.clone()))
+        .unwrap();
+    counter
+});
+
+static PROM_CACHE_MISS_BYTES: LazyLock<IntCounter> = LazyLock::new(|| {
+    let counter = IntCounter::new(
+        "cache_miss_bytes_total",
+        "Total bytes received from cache misses",
+    )
+    .unwrap();
+    PROMETHEUS_REGISTRY
+        .register(Box::new(counter.clone()))
+        .unwrap();
+    counter
+});
+
 static PROM_CACHE_INVALIDATION: LazyLock<IntCounter> = LazyLock::new(|| {
     let counter =
         IntCounter::new("cache_invalidation_total", "Number of cache invalidations").unwrap();
@@ -263,14 +287,38 @@ static CACHE_OBJECT_COUNT: LazyLock<Gauge<u64>> = LazyLock::new(|| {
         .build()
 });
 
+static CACHE_HIT_BYTES: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    opentelemetry::global::meter(CARGO_CRATE_NAME)
+        .u64_counter("cache.total_hit_bytes")
+        .with_description("Total bytes received from cache hits")
+        .build()
+});
+
+static CACHE_MISS_BYTES: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    opentelemetry::global::meter(CARGO_CRATE_NAME)
+        .u64_counter("cache.total_miss_bytes")
+        .with_description("Total bytes received from cache misses")
+        .build()
+});
+
 pub(crate) fn record_cache_hit() {
     CACHE_HIT.add(1, &[]);
     PROM_CACHE_HIT.inc();
 }
 
+pub(crate) fn record_cache_hit_bytes(bytes: u64) {
+    CACHE_HIT_BYTES.add(bytes, &[]);
+    PROM_CACHE_HIT_BYTES.inc_by(bytes);
+}
+
 pub(crate) fn record_cache_miss() {
     CACHE_MISS.add(1, &[]);
     PROM_CACHE_MISS.inc();
+}
+
+pub(crate) fn record_cache_miss_bytes(bytes: u64) {
+    CACHE_MISS_BYTES.add(bytes, &[]);
+    PROM_CACHE_MISS_BYTES.inc_by(bytes);
 }
 
 pub(crate) fn record_cache_invalidation() {

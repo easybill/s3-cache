@@ -2,7 +2,7 @@
 
 use bytes::Bytes;
 use http::{HeaderMap, Method, Uri};
-use s3_cache::{S3Cache, CacheKey};
+use s3_cache::{CacheKey, S3Cache};
 use s3s::dto::*;
 use s3s::{Body, S3Request};
 use std::sync::Arc;

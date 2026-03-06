@@ -1,6 +1,6 @@
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use bytes::Bytes;
@@ -96,10 +96,7 @@ impl S3 for SimulatedBackend {
 
         let body = {
             let storage = self.storage.read().await;
-            storage
-                .get(bucket)
-                .and_then(|b| b.get(key))
-                .cloned()
+            storage.get(bucket).and_then(|b| b.get(key)).cloned()
         };
 
         let body = match body {

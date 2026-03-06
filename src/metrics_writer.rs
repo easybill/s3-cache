@@ -82,11 +82,7 @@ pub async fn start_metrics_writer(
 /// Write metrics to file atomically using write-to-temp + rename pattern.
 ///
 /// This ensures node_exporter never reads a partially written file.
-fn write_metrics_atomic(
-    tmp_path: &str,
-    final_path: &str,
-    data: &[u8],
-) -> std::io::Result<()> {
+fn write_metrics_atomic(tmp_path: &str, final_path: &str, data: &[u8]) -> std::io::Result<()> {
     // Write to temporary file
     let mut file = File::create(tmp_path)?;
     file.write_all(data)?;

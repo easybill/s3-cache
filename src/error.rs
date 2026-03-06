@@ -4,7 +4,6 @@
 /// and runtime.
 pub enum ApplicationError {
     /// I/O error (e.g., network, file system).
-
     Io(std::io::Error),
     /// OpenTelemetry OTLP exporter build error.
     Otlp(opentelemetry_otlp::ExporterBuildError),

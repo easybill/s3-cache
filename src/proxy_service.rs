@@ -8,7 +8,7 @@ use s3s_aws::Proxy;
 use tracing::{debug, error, warn};
 
 use crate::s3_cache::{CacheKey, CachedObject, CachedObjectBody, S3Cache};
-use crate::statistics::S3CacheStatisticsTracker;
+use crate::statistics::UniqueRequestedObjectsStatisticsTracker;
 use crate::telemetry;
 
 /// Generic caching proxy that wraps any S3 implementation.
@@ -22,7 +22,7 @@ pub struct CachingProxy<T = Proxy> {
     inner: T,
     cache: Option<Arc<S3Cache>>,
     max_cacheable_size: usize,
-    statistics: S3CacheStatisticsTracker,
+    statistics: UniqueRequestedObjectsStatisticsTracker,
     hash_builder: RandomState,
     /// Dry-run mode: the cache is populated and checked, but get_object always
     /// returns the fresh upstream response. On cache hit the cached body is
@@ -42,7 +42,7 @@ impl<T> CachingProxy<T> {
         max_cacheable_size: usize,
         dry_run: bool,
     ) -> Self {
-        let statistics = S3CacheStatisticsTracker::new();
+        let statistics = UniqueRequestedObjectsStatisticsTracker::new();
         let hash_builder = RandomState::new();
 
         Self {

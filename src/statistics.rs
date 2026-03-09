@@ -8,21 +8,27 @@ use self::distribution::SizeDistributionTracker;
 
 mod distribution;
 
-pub struct S3CacheStatisticsTracker {
+/// Statistics tracker over unique objects
+///
+/// Tracks approximate cache statistics using HyperLogLog probabilistic counter
+/// and an online size-distribution estimator.
+pub struct UniqueRequestedObjectsStatisticsTracker {
     hll: AtomicHyperLogLog,
     bytes: AtomicUsize,
     distribution: Mutex<SizeDistributionTracker>,
 }
 
-impl Default for S3CacheStatisticsTracker {
+impl Default for UniqueRequestedObjectsStatisticsTracker {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl S3CacheStatisticsTracker {
+impl UniqueRequestedObjectsStatisticsTracker {
+    /// Target false-positive rate used when sizing the HyperLogLog sketch.
     pub const DEFAULT_FALSE_POSITIVE_RATE: f64 = 0.005;
 
+    /// Creates a new tracker with a deterministic seed and [`DEFAULT_FALSE_POSITIVE_RATE`](Self::DEFAULT_FALSE_POSITIVE_RATE) precision.
     pub fn new() -> Self {
         let seed_bytes: [u8; 16] = core::array::from_fn(|i| (i + 1) as u8);
         let seed = u128::from_ne_bytes(seed_bytes);
@@ -30,13 +36,17 @@ impl S3CacheStatisticsTracker {
         let precision = hyperloglockless::precision_for_error(Self::DEFAULT_FALSE_POSITIVE_RATE);
         let hll = AtomicHyperLogLog::seeded(precision, seed);
 
+        const QUANTILE_P: f64 = 0.5; // 0.5 => median quantile
+
         Self {
             hll,
             bytes: AtomicUsize::new(0),
-            distribution: Mutex::new(SizeDistributionTracker::new(0.5)),
+            distribution: Mutex::new(SizeDistributionTracker::new(QUANTILE_P)),
         }
     }
 
+    /// Records an object with the given `key` and size in `bytes`, skipping duplicate keys
+    /// to avoid double-counting bytes or skewing the size distribution.
     pub fn insert<T>(&self, key: &T, bytes: usize)
     where
         T: Hash + ?Sized,
@@ -51,10 +61,14 @@ impl S3CacheStatisticsTracker {
         }
     }
 
+    /// Total bytes accumulated across all uniquely inserted objects, returning an estimate
+    /// subject to the HyperLogLog false-positive rate.
     pub fn estimated_bytes(&self) -> usize {
         self.bytes.load(Ordering::Relaxed)
     }
 
+    /// Approximate number of distinct keys seen so far, returning a HyperLogLog estimate
+    /// within the configured false-positive rate.
     pub fn estimated_count(&self) -> usize {
         self.hll.count()
     }
@@ -64,9 +78,8 @@ impl S3CacheStatisticsTracker {
         self.distribution.lock().unwrap().mean().round() as usize
     }
 
-    /// Population variance of object sizes in bytes².
-    ///
-    /// Returns `None` when no objects have been inserted yet.
+    /// Population variance of object sizes in bytes², returning `None` when no objects
+    /// have been inserted yet.
     pub fn variance_object_size(&self) -> Option<usize> {
         self.distribution
             .lock()
@@ -77,7 +90,11 @@ impl S3CacheStatisticsTracker {
 
     /// Estimated median object size in bytes (P² quantile estimator).
     pub fn estimated_median_object_size(&self) -> usize {
-        self.distribution.lock().unwrap().estimate_median().round() as usize
+        self.distribution
+            .lock()
+            .unwrap()
+            .estimate_quantile()
+            .round() as usize
     }
 }
 
@@ -90,7 +107,7 @@ mod tests {
 
     #[test]
     fn default_creation() {
-        let counter = S3CacheStatisticsTracker::default();
+        let counter = UniqueRequestedObjectsStatisticsTracker::default();
         assert_eq!(counter.estimated_bytes(), 0);
         assert_eq!(counter.estimated_count(), 0);
         assert_eq!(counter.mean_object_size(), 0);
@@ -99,7 +116,7 @@ mod tests {
 
     #[test]
     fn mean_ignores_duplicate_keys() {
-        let counter = S3CacheStatisticsTracker::default();
+        let counter = UniqueRequestedObjectsStatisticsTracker::default();
         counter.insert(&"key1", 100);
         let mean_after_first = counter.mean_object_size();
 
@@ -115,7 +132,7 @@ mod tests {
 
     #[test]
     fn insert_unique_keys() {
-        let counter = S3CacheStatisticsTracker::default();
+        let counter = UniqueRequestedObjectsStatisticsTracker::default();
         let initial_bytes = counter.estimated_bytes();
 
         counter.insert(&"key1", 100);
@@ -135,7 +152,7 @@ mod tests {
 
     #[test]
     fn duplicate_key_does_not_add_extra_estimated_bytes() {
-        let counter = S3CacheStatisticsTracker::default();
+        let counter = UniqueRequestedObjectsStatisticsTracker::default();
 
         counter.insert(&"duplicate_key", 100);
         let bytes_after_first = counter.estimated_bytes();
@@ -152,7 +169,7 @@ mod tests {
 
     #[test]
     fn mixed_unique_and_duplicate_keys() {
-        let counter = S3CacheStatisticsTracker::default();
+        let counter = UniqueRequestedObjectsStatisticsTracker::default();
 
         counter.insert(&"key1", 100);
         counter.insert(&"key2", 200);
@@ -179,7 +196,7 @@ mod tests {
 
     #[test]
     fn different_types_as_keys() {
-        let counter = S3CacheStatisticsTracker::default();
+        let counter = UniqueRequestedObjectsStatisticsTracker::default();
 
         counter.insert(&42i32, 50);
         counter.insert(&"string_key", 100);
@@ -195,7 +212,7 @@ mod tests {
 
     #[test]
     fn zero_byte_inserts() {
-        let counter = S3CacheStatisticsTracker::default();
+        let counter = UniqueRequestedObjectsStatisticsTracker::default();
 
         counter.insert(&"key1", 0);
         counter.insert(&"key2", 0);
@@ -208,7 +225,7 @@ mod tests {
 
     #[test]
     fn large_number_of_unique_keys() {
-        let counter = S3CacheStatisticsTracker::default();
+        let counter = UniqueRequestedObjectsStatisticsTracker::default();
         let num_keys = 10_000;
 
         for i in 0..num_keys {
@@ -240,7 +257,7 @@ mod tests {
 
     #[test]
     fn concurrent_inserts() {
-        let counter = Arc::new(S3CacheStatisticsTracker::default());
+        let counter = Arc::new(UniqueRequestedObjectsStatisticsTracker::default());
         let num_threads = 4;
         let inserts_per_thread = 2500;
 
@@ -287,7 +304,7 @@ mod tests {
 
     #[test]
     fn concurrent_duplicate_inserts() {
-        let counter = Arc::new(S3CacheStatisticsTracker::default());
+        let counter = Arc::new(UniqueRequestedObjectsStatisticsTracker::default());
         let num_threads = 4;
         let inserts_per_thread = 2500;
 
@@ -332,7 +349,7 @@ mod tests {
 
     #[test]
     fn duplicate_detection_with_varying_byte_sizes() {
-        let counter = S3CacheStatisticsTracker::default();
+        let counter = UniqueRequestedObjectsStatisticsTracker::default();
 
         counter.insert(&"key1", 100);
         let bytes_after_first = counter.estimated_bytes();

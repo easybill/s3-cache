@@ -144,13 +144,13 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
                 telemetry::record_cache_hit_bytes(cached.content_length() as u64);
                 cache.report_stats().await;
 
-                self.statistics.insert(&key, cached.content_length());
-                telemetry::record_counter_estimates(
-                    self.statistics.estimated_count(),
-                    self.statistics.estimated_bytes(),
-                );
-
                 if !self.dry_run {
+                    self.statistics.insert(&key, cached.content_length());
+                    telemetry::record_counter_estimates(
+                        self.statistics.estimated_count(),
+                        self.statistics.estimated_bytes(),
+                    );
+
                     let Some(output) = cached.to_s3_object() else {
                         panic!("expected bytes, found hash");
                     };

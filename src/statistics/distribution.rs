@@ -1,24 +1,24 @@
-use psqr::P2;
+use psqr::P2 as QuantileEstimator;
 
 /// Online quantile estimator (P² algorithm) with mean/variance tracking via
 /// Welford's one-pass algorithm.
 pub struct SizeDistributionTracker {
-    // --- Welford mean/variance ---
+    // Welford mean/variance
     count: u64,
     mean: f64,
     m2: f64,
 
-    // --- P² quantile estimator ---
-    p2: P2,
+    // Quantile estimator
+    quantile_estimator: QuantileEstimator,
 }
 
 impl SizeDistributionTracker {
-    pub fn new(p: f64) -> Self {
+    pub fn new(quantile: f64) -> Self {
         Self {
             count: 0,
             mean: 0.0,
             m2: 0.0,
-            p2: P2::new(p),
+            quantile_estimator: QuantileEstimator::new(quantile),
         }
     }
 
@@ -29,12 +29,12 @@ impl SizeDistributionTracker {
         self.mean += (sample - self.mean) / (self.count as f64);
         self.m2 += (sample - old_mean) * (sample - self.mean);
 
-        self.p2.append(sample);
+        self.quantile_estimator.append(sample);
     }
 
-    /// Returns the P²-estimated quantile.
-    pub fn estimate_median(&mut self) -> f64 {
-        self.p2.value()
+    /// Returns the estimated quantile.
+    pub fn estimate_quantile(&mut self) -> f64 {
+        self.quantile_estimator.value()
     }
 
     /// Mean of all samples seen so far.
@@ -68,7 +68,7 @@ mod tests {
             q.update(target);
         }
 
-        let est = q.estimate_median();
+        let est = q.estimate_quantile();
         let error_ratio = (est - target).abs() / target;
         assert!(
             error_ratio < 0.05,

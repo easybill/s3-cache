@@ -47,7 +47,9 @@ impl UniqueRequestedObjectsStatisticsTracker {
 
     /// Records an object with the given `key` and size in `bytes`, skipping duplicate keys
     /// to avoid double-counting bytes or skewing the size distribution.
-    pub fn insert<T>(&self, key: &T, bytes: usize)
+    ///
+    /// Returns `true` if the key has increased the count estimate, otherwise `false`.
+    pub fn insert<T>(&self, key: &T, bytes: usize) -> bool
     where
         T: Hash + ?Sized,
     {
@@ -55,10 +57,14 @@ impl UniqueRequestedObjectsStatisticsTracker {
         self.hll.insert(key);
         let count_after = self.hll.raw_count();
 
-        if count_before < count_after {
+        let count_has_increased = count_before < count_after;
+
+        if count_has_increased {
             self.bytes.fetch_add(bytes, Ordering::Relaxed);
             self.distribution.lock().unwrap().update(bytes as f64);
         }
+
+        count_has_increased
     }
 
     /// Total bytes accumulated across all uniquely inserted objects, returning an estimate

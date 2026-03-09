@@ -1,12 +1,10 @@
 use std::fs::File;
 use std::io::Write;
-use std::sync::Arc;
 use std::time::Duration;
 
 use prometheus::{Encoder, TextEncoder};
 use tracing::{debug, error, info};
 
-use crate::proxy_service::CachingProxy;
 use crate::telemetry;
 
 /// Start the Prometheus metrics writer background task.
@@ -20,10 +18,7 @@ use crate::telemetry;
 /// - Uses atomic file operations (write to .tmp, then rename)
 /// - Continues running even if individual writes fail
 /// - Graceful shutdown on Ctrl+C
-pub async fn start_metrics_writer(
-    textfile_dir: String,
-    caching_proxy: Arc<CachingProxy>,
-) -> crate::Result<()> {
+pub async fn start_metrics_writer(textfile_dir: String) -> crate::Result<()> {
     info!(
         "Prometheus metrics writer started, writing to {}/s3_cache.prom",
         textfile_dir
@@ -36,24 +31,6 @@ pub async fn start_metrics_writer(
 
     loop {
         interval.tick().await;
-
-        // Update probabilistic metrics from CachingProxy
-        let unique_count = caching_proxy.estimated_unique_count();
-        let unique_bytes = caching_proxy.estimated_unique_bytes();
-        telemetry::record_counter_estimates(unique_count, unique_bytes);
-
-        let mean = caching_proxy.mean_object_size();
-        let variance = caching_proxy.variance_object_size();
-        let estimated_median = caching_proxy.estimated_median_object_size();
-        telemetry::record_object_size_distribution(mean, variance, estimated_median);
-
-        debug!(
-            unique_count = unique_count,
-            unique_bytes = unique_bytes,
-            mean_object_size = mean,
-            estimated_median_object_size = estimated_median,
-            "Updated probabilistic metrics"
-        );
 
         // Gather all metrics
         let metric_families = telemetry::PROMETHEUS_REGISTRY.gather();

@@ -1,12 +1,7 @@
 use std::hash::Hash;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use hyperloglockless::AtomicHyperLogLog;
-
-use self::distribution::SizeDistributionTracker;
-
-mod distribution;
 
 /// Statistics tracker over unique objects
 ///
@@ -15,7 +10,6 @@ mod distribution;
 pub struct UniqueRequestedObjectsStatisticsTracker {
     hll: AtomicHyperLogLog,
     bytes: AtomicUsize,
-    distribution: Mutex<SizeDistributionTracker>,
 }
 
 impl Default for UniqueRequestedObjectsStatisticsTracker {
@@ -36,12 +30,9 @@ impl UniqueRequestedObjectsStatisticsTracker {
         let precision = hyperloglockless::precision_for_error(Self::DEFAULT_FALSE_POSITIVE_RATE);
         let hll = AtomicHyperLogLog::seeded(precision, seed);
 
-        const QUANTILE_P: f64 = 0.5; // 0.5 => median quantile
-
         Self {
             hll,
             bytes: AtomicUsize::new(0),
-            distribution: Mutex::new(SizeDistributionTracker::new(QUANTILE_P)),
         }
     }
 
@@ -61,7 +52,6 @@ impl UniqueRequestedObjectsStatisticsTracker {
 
         if count_has_increased {
             self.bytes.fetch_add(bytes, Ordering::Relaxed);
-            self.distribution.lock().unwrap().update(bytes as f64);
         }
 
         count_has_increased
@@ -78,30 +68,6 @@ impl UniqueRequestedObjectsStatisticsTracker {
     pub fn estimated_count(&self) -> usize {
         self.hll.count()
     }
-
-    /// Mean object size in bytes across all uniquely inserted objects.
-    pub fn mean_object_size(&self) -> usize {
-        self.distribution.lock().unwrap().mean().round() as usize
-    }
-
-    /// Population variance of object sizes in bytes², returning `None` when no objects
-    /// have been inserted yet.
-    pub fn variance_object_size(&self) -> Option<usize> {
-        self.distribution
-            .lock()
-            .unwrap()
-            .variance()
-            .map(|v| v.round() as usize)
-    }
-
-    /// Estimated median object size in bytes (P² quantile estimator).
-    pub fn estimated_median_object_size(&self) -> usize {
-        self.distribution
-            .lock()
-            .unwrap()
-            .estimate_quantile()
-            .round() as usize
-    }
 }
 
 #[cfg(test)]
@@ -116,24 +82,6 @@ mod tests {
         let counter = UniqueRequestedObjectsStatisticsTracker::default();
         assert_eq!(counter.estimated_bytes(), 0);
         assert_eq!(counter.estimated_count(), 0);
-        assert_eq!(counter.mean_object_size(), 0);
-        assert_eq!(counter.variance_object_size(), None);
-    }
-
-    #[test]
-    fn mean_ignores_duplicate_keys() {
-        let counter = UniqueRequestedObjectsStatisticsTracker::default();
-        counter.insert(&"key1", 100);
-        let mean_after_first = counter.mean_object_size();
-
-        counter.insert(&"key1", 999);
-        counter.insert(&"key1", 999);
-
-        assert_eq!(
-            counter.mean_object_size(),
-            mean_after_first,
-            "duplicate inserts must not affect mean"
-        );
     }
 
     #[test]

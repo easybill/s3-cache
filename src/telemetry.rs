@@ -38,6 +38,17 @@ const OBJECT_SIZE_BUCKETS: &[f64] = &[
     102_400_000.0, // 100000 KiB
 ];
 
+const OVERSIZED_OBJECT_SIZE_BUCKETS: &[f64] = &[
+    1_024_000.0,     // 1000 KiB
+    2_048_000.0,     // 2000 KiB
+    5_120_000.0,     // 5000 KiB
+    10_240_000.0,    // 10000 KiB
+    102_400_000.0,   // 100000 KiB
+    204_800_000.0,   // 200000 KiB
+    500_000_000.0,   // 500000 KiB
+    1_000_000_000.0, // 1000000 KiB
+];
+
 // MARK: Cache Hit
 
 static PROM_CACHE_HIT_BYTES_HISTOGRAM: LazyLock<prometheus::Histogram> = LazyLock::new(|| {
@@ -145,7 +156,7 @@ static PROM_CACHE_OVERSIZED_BYTES_HISTOGRAM: LazyLock<prometheus::Histogram> =
                 "cache_oversized_bytes_histogram",
                 "Distribution of object sizes that exceeded the max cacheable size",
             )
-            .buckets(OBJECT_SIZE_BUCKETS.to_vec()),
+            .buckets(OVERSIZED_OBJECT_SIZE_BUCKETS.to_vec()),
         )
         .unwrap();
         PROMETHEUS_REGISTRY

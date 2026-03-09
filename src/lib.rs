@@ -181,10 +181,8 @@ where
             textfile_dir
         );
         Some(tokio::spawn({
-            let proxy_arc = caching_proxy.clone_arc();
             async move {
-                if let Err(e) = metrics_writer::start_metrics_writer(textfile_dir, proxy_arc).await
-                {
+                if let Err(e) = metrics_writer::start_metrics_writer(textfile_dir).await {
                     error!("Metrics writer failed: {:?}", e);
                 }
             }

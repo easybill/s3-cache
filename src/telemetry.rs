@@ -1,8 +1,5 @@
 use std::{
-    sync::{
-        LazyLock,
-        atomic::{AtomicU64, Ordering},
-    },
+    sync::{LazyLock, atomic::AtomicU64},
     time::Duration,
 };
 
@@ -144,20 +141,21 @@ static PROM_CACHE_INVALIDATION_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
 
 // MARK: Cache Oversized
 
-static PROM_CACHE_OVERSIZED_BYTES_HISTOGRAM: LazyLock<prometheus::Histogram> = LazyLock::new(|| {
-    let histogram = prometheus::Histogram::with_opts(
-        HistogramOpts::new(
-            "cache_oversized_bytes_histogram",
-            "Distribution of object sizes that exceeded the max cacheable size",
+static PROM_CACHE_OVERSIZED_BYTES_HISTOGRAM: LazyLock<prometheus::Histogram> =
+    LazyLock::new(|| {
+        let histogram = prometheus::Histogram::with_opts(
+            HistogramOpts::new(
+                "cache_oversized_bytes_histogram",
+                "Distribution of object sizes that exceeded the max cacheable size",
+            )
+            .buckets(OBJECT_SIZE_BUCKETS.to_vec()),
         )
-        .buckets(OBJECT_SIZE_BUCKETS.to_vec()),
-    )
-    .unwrap();
-    PROMETHEUS_REGISTRY
-        .register(Box::new(histogram.clone()))
         .unwrap();
-    histogram
-});
+        PROMETHEUS_REGISTRY
+            .register(Box::new(histogram.clone()))
+            .unwrap();
+        histogram
+    });
 
 static PROM_CACHE_OVERSIZED_REQUESTS_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
     let counter = IntCounter::new(
@@ -191,19 +189,23 @@ static PROM_CACHE_SIZE_COUNT: LazyLock<IntGauge> = LazyLock::new(|| {
 
 // MARK: Cache Unique
 
-static PROM_CACHE_ESTIMATED_UNIQUE_KEYS_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
-    let counter = IntCounter::new(
-        "cache_estimated_unique_keys_total",
-        "Estimated number of unique keys accessed",
-    )
-    .unwrap();
-    PROMETHEUS_REGISTRY
-        .register(Box::new(counter.clone()))
+static PROM_CACHE_UNIQUE_REQUESTED_BYTES_HISTOGRAM: LazyLock<prometheus::Histogram> =
+    LazyLock::new(|| {
+        let histogram = prometheus::Histogram::with_opts(
+            HistogramOpts::new(
+                "cache_estimated_unique_bytes_histogram",
+                "Distribution of estimated unique object sizes",
+            )
+            .buckets(OBJECT_SIZE_BUCKETS.to_vec()),
+        )
         .unwrap();
-    counter
-});
+        PROMETHEUS_REGISTRY
+            .register(Box::new(histogram.clone()))
+            .unwrap();
+        histogram
+    });
 
-static PROM_CACHE_ESTIMATED_UNIQUE_BYTES_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
+static PROM_CACHE_UNIQUE_REQUESTED_BYTES_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
     let counter = IntCounter::new(
         "cache_estimated_unique_bytes_total",
         "Estimated total bytes for unique keys accessed",
@@ -520,14 +522,14 @@ static CACHE_SIZE_COUNT: LazyLock<Gauge<u64>> = LazyLock::new(|| {
 
 // MARK: Cache Unique
 
-static CACHE_ESTIMATED_UNIQUE_KEYS: LazyLock<Counter<u64>> = LazyLock::new(|| {
+static CACHE_UNIQUE_REQUESTED_BYTES_HISTOGRAM: LazyLock<Histogram<u64>> = LazyLock::new(|| {
     opentelemetry::global::meter(CARGO_CRATE_NAME)
-        .u64_counter("cache.estimated_unique_keys_total")
-        .with_description("Estimated number of unique keys accessed")
+        .u64_histogram("cache.estimated_unique_bytes_histogram")
+        .with_description("Distribution of estimated unique object sizes")
         .build()
 });
 
-static CACHE_ESTIMATED_UNIQUE_BYTES: LazyLock<Counter<u64>> = LazyLock::new(|| {
+static CACHE_UNIQUE_REQUESTED_BYTES_TOTAL: LazyLock<Counter<u64>> = LazyLock::new(|| {
     opentelemetry::global::meter(CARGO_CRATE_NAME)
         .u64_counter("cache.estimated_unique_bytes_total")
         .with_description("Estimated total bytes for unique keys accessed")
@@ -580,6 +582,13 @@ pub(crate) fn record_cache_oversized(bytes: u64) {
     PROM_CACHE_OVERSIZED_REQUESTS_TOTAL.inc();
 }
 
+pub(crate) fn record_unique_requested(bytes: u64) {
+    CACHE_UNIQUE_REQUESTED_BYTES_HISTOGRAM.record(bytes, &[]);
+    CACHE_UNIQUE_REQUESTED_BYTES_TOTAL.add(bytes, &[]);
+    PROM_CACHE_UNIQUE_REQUESTED_BYTES_HISTOGRAM.observe(bytes as f64);
+    PROM_CACHE_UNIQUE_REQUESTED_BYTES_TOTAL.inc_by(bytes);
+}
+
 pub(crate) fn record_cache_invalidation() {
     CACHE_INVALIDATION_TOTAL.add(1, &[]);
     PROM_CACHE_INVALIDATION_TOTAL.inc();
@@ -605,25 +614,6 @@ pub(crate) fn record_cache_stats(object_count: usize, size_bytes: usize) {
     CACHE_SIZE_COUNT.record(object_count as u64, &[]);
     PROM_CACHE_SIZE_BYTES.set(size_bytes as i64);
     PROM_CACHE_SIZE_COUNT.set(object_count as i64);
-}
-
-static LAST_UNIQUE_KEYS: AtomicU64 = AtomicU64::new(0);
-static LAST_UNIQUE_BYTES: AtomicU64 = AtomicU64::new(0);
-
-pub(crate) fn record_counter_estimates(unique_count: usize, unique_bytes: usize) {
-    let new_keys = unique_count as u64;
-    let new_bytes = unique_bytes as u64;
-
-    let prev_keys = LAST_UNIQUE_KEYS.swap(new_keys, Ordering::Relaxed);
-    let prev_bytes = LAST_UNIQUE_BYTES.swap(new_bytes, Ordering::Relaxed);
-
-    let delta_keys = new_keys.saturating_sub(prev_keys);
-    let delta_bytes = new_bytes.saturating_sub(prev_bytes);
-
-    CACHE_ESTIMATED_UNIQUE_KEYS.add(delta_keys, &[]);
-    CACHE_ESTIMATED_UNIQUE_BYTES.add(delta_bytes, &[]);
-    PROM_CACHE_ESTIMATED_UNIQUE_KEYS_TOTAL.inc_by(delta_keys);
-    PROM_CACHE_ESTIMATED_UNIQUE_BYTES_TOTAL.inc_by(delta_bytes);
 }
 
 static CACHE_MEAN_OBJECT_SIZE: LazyLock<Gauge<u64>> = LazyLock::new(|| {

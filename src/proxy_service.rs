@@ -144,11 +144,11 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
                 cache.report_stats().await;
 
                 if !self.dry_run {
-                    self.statistics.insert(&key, cached.content_length());
-                    telemetry::record_counter_estimates(
-                        self.statistics.estimated_count(),
-                        self.statistics.estimated_bytes(),
-                    );
+                    let bytes_len = cached.content_length();
+
+                    if self.statistics.insert(&key, bytes_len) {
+                        telemetry::record_unique_requested(bytes_len as u64);
+                    }
 
                     let Some(output) = cached.to_s3_object() else {
                         panic!("expected bytes, found hash");
@@ -185,12 +185,11 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
 
         let max_cacheable_size = self.max_cacheable_size;
 
-        self.statistics
-            .insert(&key, output.content_length.unwrap_or(0) as usize);
-        telemetry::record_counter_estimates(
-            self.statistics.estimated_count(),
-            self.statistics.estimated_bytes(),
-        );
+        let bytes_len = output.content_length.unwrap_or(0) as usize;
+
+        if self.statistics.insert(&key, bytes_len) {
+            telemetry::record_unique_requested(bytes_len as u64);
+        }
 
         // Check if object is too large to cache based on Content-Length
         if let Some(content_length) = output.content_length

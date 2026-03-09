@@ -11,7 +11,7 @@ mod distribution;
 pub struct S3CacheStatisticsTracker {
     hll: AtomicHyperLogLog,
     bytes: AtomicUsize,
-    median: Mutex<SizeDistributionTracker>,
+    distribution: Mutex<SizeDistributionTracker>,
 }
 
 impl Default for S3CacheStatisticsTracker {
@@ -33,7 +33,7 @@ impl S3CacheStatisticsTracker {
         Self {
             hll,
             bytes: AtomicUsize::new(0),
-            median: Mutex::new(SizeDistributionTracker::new(0.5)),
+            distribution: Mutex::new(SizeDistributionTracker::new(0.5)),
         }
     }
 
@@ -47,7 +47,7 @@ impl S3CacheStatisticsTracker {
 
         if count_before < count_after {
             self.bytes.fetch_add(bytes, Ordering::Relaxed);
-            self.median.lock().unwrap().update(bytes as f64);
+            self.distribution.lock().unwrap().update(bytes as f64);
         }
     }
 
@@ -61,14 +61,14 @@ impl S3CacheStatisticsTracker {
 
     /// Mean object size in bytes across all uniquely inserted objects.
     pub fn mean_object_size(&self) -> usize {
-        self.median.lock().unwrap().mean().round() as usize
+        self.distribution.lock().unwrap().mean().round() as usize
     }
 
     /// Population variance of object sizes in bytes².
     ///
     /// Returns `None` when no objects have been inserted yet.
     pub fn variance_object_size(&self) -> Option<usize> {
-        self.median
+        self.distribution
             .lock()
             .unwrap()
             .variance()
@@ -77,7 +77,7 @@ impl S3CacheStatisticsTracker {
 
     /// Estimated median object size in bytes (P² quantile estimator).
     pub fn estimated_median_object_size(&self) -> usize {
-        self.median.lock().unwrap().estimate_median().round() as usize
+        self.distribution.lock().unwrap().estimate_median().round() as usize
     }
 }
 

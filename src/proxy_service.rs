@@ -203,12 +203,14 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
                 max_cacheable_size,
                 "object too large to cache, streaming through"
             );
-            telemetry::record_cache_oversized();
+            telemetry::record_cache_oversized(content_length as u64);
             // Stream through without caching
             telemetry::record_request_duration(start.elapsed().as_millis() as u64);
             telemetry::record_response_body_size(content_length as u64);
             return Ok(S3Response::new(output));
         }
+
+        let body_len = output.content_length.unwrap_or(0);
 
         // Try to buffer and cache the response body
         let Some(body_blob) = output.body else {
@@ -313,7 +315,7 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
                     "object exceeded size limit during buffering, stream consumed"
                 );
                 telemetry::record_buffering_error();
-                telemetry::record_cache_oversized();
+                telemetry::record_cache_oversized(body_len as u64);
                 telemetry::record_request_duration(start.elapsed().as_millis() as u64);
                 Err(s3_error!(
                     InternalError,

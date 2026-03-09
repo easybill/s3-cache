@@ -68,18 +68,6 @@ impl<T> CachingProxy<T> {
     pub fn estimated_unique_bytes(&self) -> usize {
         self.statistics.estimated_bytes()
     }
-
-    pub fn mean_object_size(&self) -> usize {
-        self.statistics.mean_object_size()
-    }
-
-    pub fn variance_object_size(&self) -> Option<usize> {
-        self.statistics.variance_object_size()
-    }
-
-    pub fn estimated_median_object_size(&self) -> usize {
-        self.statistics.estimated_median_object_size()
-    }
 }
 
 impl CachingProxy<Proxy> {

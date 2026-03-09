@@ -309,6 +309,7 @@ impl S3Cache {
             let evicted_size = evicted_value.content_length();
             shard.size.fetch_sub(evicted_size, Ordering::Relaxed);
             self.global_size.fetch_sub(evicted_size, Ordering::Relaxed);
+            telemetry::record_cache_eviction(evicted_size as u64);
         }
 
         // Drop own shard's write lock before touching other shards.
@@ -371,6 +372,7 @@ impl S3Cache {
             let evicted_size = evicted_value.content_length();
             target.size.fetch_sub(evicted_size, Ordering::Relaxed);
             self.global_size.fetch_sub(evicted_size, Ordering::Relaxed);
+            telemetry::record_cache_eviction(evicted_size as u64);
         }
     }
 

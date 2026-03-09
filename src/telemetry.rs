@@ -28,23 +28,40 @@ pub(crate) static PROMETHEUS_REGISTRY: LazyLock<Registry> = LazyLock::new(|| {
         .expect("Failed to create Prometheus registry")
 });
 
-static PROM_CACHE_HIT: LazyLock<IntCounter> = LazyLock::new(|| {
-    let counter = IntCounter::new("cache_hit_total", "Number of cache hits").unwrap();
+const OBJECT_SIZE_BUCKETS: &[f64] = &[
+    10_240.0,      // 10 KiB
+    51_200.0,      // 50 KiB
+    76_800.0,      // 75 KiB
+    102_400.0,     // 100 KiB
+    128_000.0,     // 125 KiB
+    153_600.0,     // 150 KiB
+    204_800.0,     // 200 KiB
+    512_000.0,     // 500 KiB
+    1_024_000.0,   // 1000 KiB
+    2_048_000.0,   // 2000 KiB
+    5_120_000.0,   // 5000 KiB
+    10_240_000.0,  // 10000 KiB
+    102_400_000.0, // 100000 KiB
+];
+
+// MARK: Cache Hit
+
+static PROM_CACHE_HIT_BYTES_HISTOGRAM: LazyLock<prometheus::Histogram> = LazyLock::new(|| {
+    let histogram = prometheus::Histogram::with_opts(
+        HistogramOpts::new(
+            "cache_hit_bytes_histogram",
+            "Distribution of object sizes on cache hits",
+        )
+        .buckets(OBJECT_SIZE_BUCKETS.to_vec()),
+    )
+    .unwrap();
     PROMETHEUS_REGISTRY
-        .register(Box::new(counter.clone()))
+        .register(Box::new(histogram.clone()))
         .unwrap();
-    counter
+    histogram
 });
 
-static PROM_CACHE_MISS: LazyLock<IntCounter> = LazyLock::new(|| {
-    let counter = IntCounter::new("cache_miss_total", "Number of cache misses").unwrap();
-    PROMETHEUS_REGISTRY
-        .register(Box::new(counter.clone()))
-        .unwrap();
-    counter
-});
-
-static PROM_CACHE_HIT_BYTES: LazyLock<IntCounter> = LazyLock::new(|| {
+static PROM_CACHE_HIT_BYTES_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
     let counter = IntCounter::new(
         "cache_hit_bytes_total",
         "Total bytes received from cache hits",
@@ -56,7 +73,24 @@ static PROM_CACHE_HIT_BYTES: LazyLock<IntCounter> = LazyLock::new(|| {
     counter
 });
 
-static PROM_CACHE_MISS_BYTES: LazyLock<IntCounter> = LazyLock::new(|| {
+// MARK: Cache Miss
+
+static PROM_CACHE_MISS_BYTES_HISTOGRAM: LazyLock<prometheus::Histogram> = LazyLock::new(|| {
+    let histogram = prometheus::Histogram::with_opts(
+        HistogramOpts::new(
+            "cache_miss_bytes_histogram",
+            "Distribution of object sizes on cache misses",
+        )
+        .buckets(OBJECT_SIZE_BUCKETS.to_vec()),
+    )
+    .unwrap();
+    PROMETHEUS_REGISTRY
+        .register(Box::new(histogram.clone()))
+        .unwrap();
+    histogram
+});
+
+static PROM_CACHE_MISS_BYTES_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
     let counter = IntCounter::new(
         "cache_miss_bytes_total",
         "Total bytes received from cache misses",
@@ -68,10 +102,27 @@ static PROM_CACHE_MISS_BYTES: LazyLock<IntCounter> = LazyLock::new(|| {
     counter
 });
 
-static PROM_CACHE_OVERSIZED: LazyLock<IntCounter> = LazyLock::new(|| {
+// MARK: Cache Eviction
+
+static PROM_CACHE_EVICTION_BYTES_HISTOGRAM: LazyLock<prometheus::Histogram> = LazyLock::new(|| {
+    let histogram = prometheus::Histogram::with_opts(
+        HistogramOpts::new(
+            "cache_eviction_bytes_histogram",
+            "Distribution of object sizes on cache evictions",
+        )
+        .buckets(OBJECT_SIZE_BUCKETS.to_vec()),
+    )
+    .unwrap();
+    PROMETHEUS_REGISTRY
+        .register(Box::new(histogram.clone()))
+        .unwrap();
+    histogram
+});
+
+static PROM_CACHE_EVICTION_BYTES_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
     let counter = IntCounter::new(
-        "cache_oversized_total",
-        "Total number of objects encountered exceeding max_cacheable_size",
+        "cache_eviction_bytes_total",
+        "Total bytes evicted from cache",
     )
     .unwrap();
     PROMETHEUS_REGISTRY
@@ -80,7 +131,9 @@ static PROM_CACHE_OVERSIZED: LazyLock<IntCounter> = LazyLock::new(|| {
     counter
 });
 
-static PROM_CACHE_INVALIDATION: LazyLock<IntCounter> = LazyLock::new(|| {
+// MARK: Cache Invalidation
+
+static PROM_CACHE_INVALIDATION_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
     let counter =
         IntCounter::new("cache_invalidation_total", "Number of cache invalidations").unwrap();
     PROMETHEUS_REGISTRY
@@ -89,10 +142,12 @@ static PROM_CACHE_INVALIDATION: LazyLock<IntCounter> = LazyLock::new(|| {
     counter
 });
 
-static PROM_CACHE_MISMATCH: LazyLock<IntCounter> = LazyLock::new(|| {
+// MARK: Cache Oversized
+
+static PROM_CACHE_OVERSIZED_REQUESTS_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
     let counter = IntCounter::new(
-        "cache_mismatch_total",
-        "Number of cache mismatches detected in dryrun mode",
+        "cache_oversized_requests_total",
+        "Total number of objects encountered exceeding the max cacheable size",
     )
     .unwrap();
     PROMETHEUS_REGISTRY
@@ -101,26 +156,7 @@ static PROM_CACHE_MISMATCH: LazyLock<IntCounter> = LazyLock::new(|| {
     counter
 });
 
-static PROM_UPSTREAM_ERROR: LazyLock<IntCounter> = LazyLock::new(|| {
-    let counter =
-        IntCounter::new("cache_upstream_error_total", "Number of upstream S3 errors").unwrap();
-    PROMETHEUS_REGISTRY
-        .register(Box::new(counter.clone()))
-        .unwrap();
-    counter
-});
-
-static PROM_BUFFERING_ERROR: LazyLock<IntCounter> = LazyLock::new(|| {
-    let counter = IntCounter::new(
-        "cache_buffering_error_total",
-        "Number of buffering errors (object exceeded size limit during streaming)",
-    )
-    .unwrap();
-    PROMETHEUS_REGISTRY
-        .register(Box::new(counter.clone()))
-        .unwrap();
-    counter
-});
+// MARK: Cache Size/Count
 
 static PROM_CACHE_SIZE_BYTES: LazyLock<IntGauge> = LazyLock::new(|| {
     let gauge = IntGauge::new("cache_size_bytes", "Current cache size in bytes").unwrap();
@@ -130,15 +166,17 @@ static PROM_CACHE_SIZE_BYTES: LazyLock<IntGauge> = LazyLock::new(|| {
     gauge
 });
 
-static PROM_CACHE_OBJECT_COUNT: LazyLock<IntGauge> = LazyLock::new(|| {
-    let gauge = IntGauge::new("cache_object_count", "Current number of objects in cache").unwrap();
+static PROM_CACHE_SIZE_COUNT: LazyLock<IntGauge> = LazyLock::new(|| {
+    let gauge = IntGauge::new("cache_size_count", "Current number of objects in cache").unwrap();
     PROMETHEUS_REGISTRY
         .register(Box::new(gauge.clone()))
         .unwrap();
     gauge
 });
 
-static PROM_CACHE_UNIQUE_KEYS_ESTIMATE: LazyLock<IntCounter> = LazyLock::new(|| {
+// MARK: Cache Unique
+
+static PROM_CACHE_ESTIMATED_UNIQUE_KEYS_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
     let counter = IntCounter::new(
         "cache_estimated_unique_keys_total",
         "Estimated number of unique keys accessed",
@@ -150,7 +188,7 @@ static PROM_CACHE_UNIQUE_KEYS_ESTIMATE: LazyLock<IntCounter> = LazyLock::new(|| 
     counter
 });
 
-static PROM_CACHE_UNIQUE_BYTES_ESTIMATE: LazyLock<IntCounter> = LazyLock::new(|| {
+static PROM_CACHE_ESTIMATED_UNIQUE_BYTES_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
     let counter = IntCounter::new(
         "cache_estimated_unique_bytes_total",
         "Estimated total bytes for unique keys accessed",
@@ -162,7 +200,7 @@ static PROM_CACHE_UNIQUE_BYTES_ESTIMATE: LazyLock<IntCounter> = LazyLock::new(||
     counter
 });
 
-static PROM_CACHE_MEAN_OBJECT_SIZE: LazyLock<IntGauge> = LazyLock::new(|| {
+static PROM_CACHE_MEAN_OBJECT_SIZE_BYTES: LazyLock<IntGauge> = LazyLock::new(|| {
     let gauge = IntGauge::new(
         "cache_mean_object_size_bytes",
         "Mean size of unique cached objects in bytes",
@@ -174,8 +212,8 @@ static PROM_CACHE_MEAN_OBJECT_SIZE: LazyLock<IntGauge> = LazyLock::new(|| {
     gauge
 });
 
-static PROM_CACHE_VARIANCE_OBJECT_SIZE: LazyLock<IntGauge> = LazyLock::new(|| {
-    let gauge = IntGauge::new(
+static PROM_CACHE_VARIANCE_OBJECT_SIZE_BYTES_SQUARED: LazyLock<IntGauge> = LazyLock::new(|| {
+    let gauge: prometheus::core::GenericGauge<prometheus::core::AtomicI64> = IntGauge::new(
         "cache_variance_object_size_bytes_squared",
         "Population variance of unique cached object sizes in bytes squared",
     )
@@ -186,7 +224,7 @@ static PROM_CACHE_VARIANCE_OBJECT_SIZE: LazyLock<IntGauge> = LazyLock::new(|| {
     gauge
 });
 
-static PROM_CACHE_ESTIMATED_MEDIAN_OBJECT_SIZE: LazyLock<IntGauge> = LazyLock::new(|| {
+static PROM_CACHE_ESTIMATED_MEDIAN_OBJECT_SIZE_BYTES: LazyLock<IntGauge> = LazyLock::new(|| {
     let gauge = IntGauge::new(
         "cache_estimated_median_object_size_bytes",
         "Estimated median size of unique cached objects in bytes (P² algorithm)",
@@ -228,6 +266,41 @@ static PROM_RESPONSE_BODY_SIZE_BYTES: LazyLock<prometheus::Histogram> = LazyLock
         .register(Box::new(histogram.clone()))
         .unwrap();
     histogram
+});
+
+// MARK: Cache Error
+
+static PROM_CACHE_MISMATCH_ERROR_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
+    let counter = IntCounter::new(
+        "cache_mismatch_error_total",
+        "Number of cache mismatches detected in dry-run mode",
+    )
+    .unwrap();
+    PROMETHEUS_REGISTRY
+        .register(Box::new(counter.clone()))
+        .unwrap();
+    counter
+});
+
+static PROM_UPSTREAM_ERROR: LazyLock<IntCounter> = LazyLock::new(|| {
+    let counter =
+        IntCounter::new("cache_upstream_error_total", "Number of upstream S3 errors").unwrap();
+    PROMETHEUS_REGISTRY
+        .register(Box::new(counter.clone()))
+        .unwrap();
+    counter
+});
+
+static PROM_BUFFERING_ERROR: LazyLock<IntCounter> = LazyLock::new(|| {
+    let counter = IntCounter::new(
+        "cache_buffering_error_total",
+        "Number of buffering errors (object exceeded size limit during streaming)",
+    )
+    .unwrap();
+    PROMETHEUS_REGISTRY
+        .register(Box::new(counter.clone()))
+        .unwrap();
+    counter
 });
 
 pub(crate) fn initialize_telemetry(
@@ -332,26 +405,82 @@ pub(crate) fn shutdown_metrics(metric_provider: opentelemetry_sdk::metrics::SdkM
 
 // Cache metrics
 
-static CACHE_HIT: LazyLock<Counter<u64>> = LazyLock::new(|| {
+// MARK: Cache Hit
+
+static CACHE_HIT_BYTES_HISTOGRAM: LazyLock<Histogram<u64>> = LazyLock::new(|| {
     opentelemetry::global::meter(CARGO_CRATE_NAME)
-        .u64_counter("cache.hit")
-        .with_description("Number of cache hits")
+        .u64_histogram("cache.hit_bytes_histogram")
+        .with_description("Distribution of object sizes on cache hits")
         .build()
 });
 
-static CACHE_MISS: LazyLock<Counter<u64>> = LazyLock::new(|| {
+static CACHE_HIT_BYTES_TOTAL: LazyLock<Counter<u64>> = LazyLock::new(|| {
     opentelemetry::global::meter(CARGO_CRATE_NAME)
-        .u64_counter("cache.miss")
-        .with_description("Number of cache misses")
+        .u64_counter("cache.hit_bytes_total")
+        .with_description("Total bytes received from cache hits")
         .build()
 });
 
-static CACHE_INVALIDATION: LazyLock<Counter<u64>> = LazyLock::new(|| {
+// MARK: Cache Miss
+
+static CACHE_MISS_BYTES_HISTOGRAM: LazyLock<Histogram<u64>> = LazyLock::new(|| {
     opentelemetry::global::meter(CARGO_CRATE_NAME)
-        .u64_counter("cache.invalidation")
+        .u64_histogram("cache.miss_bytes_histogram")
+        .with_description("Distribution of object sizes on cache misses")
+        .build()
+});
+
+static CACHE_MISS_BYTES_TOTAL: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    opentelemetry::global::meter(CARGO_CRATE_NAME)
+        .u64_counter("cache.miss_bytes_total")
+        .with_description("Total bytes received from cache misses")
+        .build()
+});
+
+// MARK: Cache Eviction
+
+static CACHE_EVICTION_BYTES_HISTOGRAM: LazyLock<Histogram<u64>> = LazyLock::new(|| {
+    opentelemetry::global::meter(CARGO_CRATE_NAME)
+        .u64_histogram("cache.eviction_bytes_histogram")
+        .with_description("Distribution of object sizes on cache evictions")
+        .build()
+});
+
+static CACHE_EVICTION_BYTES_TOTAL: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    opentelemetry::global::meter(CARGO_CRATE_NAME)
+        .u64_counter("cache.eviction_bytes_total")
+        .with_description("Total bytes evicted from cache")
+        .build()
+});
+
+// MARK: Cache Invalidation
+
+static CACHE_INVALIDATION_TOTAL: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    opentelemetry::global::meter(CARGO_CRATE_NAME)
+        .u64_counter("cache.invalidation_total")
         .with_description("Number of cache invalidations")
         .build()
 });
+
+// MARK: Cache Oversized
+
+static CACHE_OVERSIZED_REQUESTS_TOTAL: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    opentelemetry::global::meter(CARGO_CRATE_NAME)
+        .u64_counter("cache.oversized_requests_total")
+        .with_description("Total number of objects encountered exceeding the max cacheable size")
+        .build()
+});
+
+// MARK: Cache Mismatch
+
+static CACHE_MISMATCH_ERROR_TOTAL: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    opentelemetry::global::meter(CARGO_CRATE_NAME)
+        .u64_counter("cache.mismatch_error_total")
+        .with_description("Number of cache mismatches detected in dry-run mode")
+        .build()
+});
+
+// MARK: Cache Size/Count
 
 static CACHE_SIZE_BYTES: LazyLock<Gauge<u64>> = LazyLock::new(|| {
     opentelemetry::global::meter(CARGO_CRATE_NAME)
@@ -360,75 +489,30 @@ static CACHE_SIZE_BYTES: LazyLock<Gauge<u64>> = LazyLock::new(|| {
         .build()
 });
 
-static CACHE_OBJECT_COUNT: LazyLock<Gauge<u64>> = LazyLock::new(|| {
+static CACHE_SIZE_COUNT: LazyLock<Gauge<u64>> = LazyLock::new(|| {
     opentelemetry::global::meter(CARGO_CRATE_NAME)
-        .u64_gauge("cache.object_count")
+        .u64_gauge("cache.size_count")
         .with_description("Current number of objects in cache")
         .build()
 });
 
-static CACHE_HIT_BYTES: LazyLock<Counter<u64>> = LazyLock::new(|| {
+// MARK: Cache Unique
+
+static CACHE_ESTIMATED_UNIQUE_KEYS: LazyLock<Counter<u64>> = LazyLock::new(|| {
     opentelemetry::global::meter(CARGO_CRATE_NAME)
-        .u64_counter("cache.total_hit_bytes")
-        .with_description("Total bytes received from cache hits")
+        .u64_counter("cache.estimated_unique_keys_total")
+        .with_description("Estimated number of unique keys accessed")
         .build()
 });
 
-static CACHE_MISS_BYTES: LazyLock<Counter<u64>> = LazyLock::new(|| {
+static CACHE_ESTIMATED_UNIQUE_BYTES: LazyLock<Counter<u64>> = LazyLock::new(|| {
     opentelemetry::global::meter(CARGO_CRATE_NAME)
-        .u64_counter("cache.total_miss_bytes")
-        .with_description("Total bytes received from cache misses")
+        .u64_counter("cache.estimated_unique_bytes_total")
+        .with_description("Estimated total bytes for unique keys accessed")
         .build()
 });
 
-static CACHE_OVERSIZED: LazyLock<Counter<u64>> = LazyLock::new(|| {
-    opentelemetry::global::meter(CARGO_CRATE_NAME)
-        .u64_counter("cache.total_oversized")
-        .with_description("Total number of objects encountered exceeding max_cacheable_size")
-        .build()
-});
-
-pub(crate) fn record_cache_hit() {
-    CACHE_HIT.add(1, &[]);
-    PROM_CACHE_HIT.inc();
-}
-
-pub(crate) fn record_cache_hit_bytes(bytes: u64) {
-    CACHE_HIT_BYTES.add(bytes, &[]);
-    PROM_CACHE_HIT_BYTES.inc_by(bytes);
-}
-
-pub(crate) fn record_cache_miss() {
-    CACHE_MISS.add(1, &[]);
-    PROM_CACHE_MISS.inc();
-}
-
-pub(crate) fn record_cache_miss_bytes(bytes: u64) {
-    CACHE_MISS_BYTES.add(bytes, &[]);
-    PROM_CACHE_MISS_BYTES.inc_by(bytes);
-}
-
-pub(crate) fn record_cache_oversized() {
-    CACHE_OVERSIZED.add(1, &[]);
-    PROM_CACHE_OVERSIZED.inc();
-}
-
-pub(crate) fn record_cache_invalidation() {
-    CACHE_INVALIDATION.add(1, &[]);
-    PROM_CACHE_INVALIDATION.inc();
-}
-
-static CACHE_MISMATCH: LazyLock<Counter<u64>> = LazyLock::new(|| {
-    opentelemetry::global::meter(CARGO_CRATE_NAME)
-        .u64_counter("cache.mismatch")
-        .with_description("Number of cache mismatches detected in dryrun mode")
-        .build()
-});
-
-pub(crate) fn record_cache_mismatch() {
-    CACHE_MISMATCH.add(1, &[]);
-    PROM_CACHE_MISMATCH.inc();
-}
+// MARK: Cache Errors
 
 static UPSTREAM_ERROR: LazyLock<Counter<u64>> = LazyLock::new(|| {
     opentelemetry::global::meter(CARGO_CRATE_NAME)
@@ -446,6 +530,42 @@ static BUFFERING_ERROR: LazyLock<Counter<u64>> = LazyLock::new(|| {
         .build()
 });
 
+pub(crate) fn record_cache_hit(bytes: u64) {
+    CACHE_HIT_BYTES_HISTOGRAM.record(bytes, &[]);
+    CACHE_HIT_BYTES_TOTAL.add(bytes, &[]);
+    PROM_CACHE_HIT_BYTES_HISTOGRAM.observe(bytes as f64);
+    PROM_CACHE_HIT_BYTES_TOTAL.inc_by(bytes);
+}
+
+pub(crate) fn record_cache_miss(bytes: u64) {
+    CACHE_MISS_BYTES_HISTOGRAM.record(bytes, &[]);
+    CACHE_MISS_BYTES_TOTAL.add(bytes, &[]);
+    PROM_CACHE_MISS_BYTES_HISTOGRAM.observe(bytes as f64);
+    PROM_CACHE_MISS_BYTES_TOTAL.inc_by(bytes);
+}
+
+pub(crate) fn record_cache_eviction(bytes: u64) {
+    CACHE_EVICTION_BYTES_HISTOGRAM.record(bytes, &[]);
+    CACHE_EVICTION_BYTES_TOTAL.add(bytes, &[]);
+    PROM_CACHE_EVICTION_BYTES_HISTOGRAM.observe(bytes as f64);
+    PROM_CACHE_EVICTION_BYTES_TOTAL.inc_by(bytes);
+}
+
+pub(crate) fn record_cache_oversized() {
+    CACHE_OVERSIZED_REQUESTS_TOTAL.add(1, &[]);
+    PROM_CACHE_OVERSIZED_REQUESTS_TOTAL.inc();
+}
+
+pub(crate) fn record_cache_invalidation() {
+    CACHE_INVALIDATION_TOTAL.add(1, &[]);
+    PROM_CACHE_INVALIDATION_TOTAL.inc();
+}
+
+pub(crate) fn record_cache_mismatch() {
+    CACHE_MISMATCH_ERROR_TOTAL.add(1, &[]);
+    PROM_CACHE_MISMATCH_ERROR_TOTAL.inc();
+}
+
 pub(crate) fn record_upstream_error() {
     UPSTREAM_ERROR.add(1, &[]);
     PROM_UPSTREAM_ERROR.inc();
@@ -458,24 +578,10 @@ pub(crate) fn record_buffering_error() {
 
 pub(crate) fn record_cache_stats(object_count: usize, size_bytes: usize) {
     CACHE_SIZE_BYTES.record(size_bytes as u64, &[]);
-    CACHE_OBJECT_COUNT.record(object_count as u64, &[]);
+    CACHE_SIZE_COUNT.record(object_count as u64, &[]);
     PROM_CACHE_SIZE_BYTES.set(size_bytes as i64);
-    PROM_CACHE_OBJECT_COUNT.set(object_count as i64);
+    PROM_CACHE_SIZE_COUNT.set(object_count as i64);
 }
-
-static CACHE_ESTIMATED_UNIQUE_KEYS: LazyLock<Counter<u64>> = LazyLock::new(|| {
-    opentelemetry::global::meter(CARGO_CRATE_NAME)
-        .u64_counter("cache.estimated_unique_keys_total")
-        .with_description("Estimated number of unique keys accessed")
-        .build()
-});
-
-static CACHE_ESTIMATED_UNIQUE_BYTES: LazyLock<Counter<u64>> = LazyLock::new(|| {
-    opentelemetry::global::meter(CARGO_CRATE_NAME)
-        .u64_counter("cache.estimated_unique_bytes_total")
-        .with_description("Estimated total bytes for unique keys accessed")
-        .build()
-});
 
 static LAST_UNIQUE_KEYS: AtomicU64 = AtomicU64::new(0);
 static LAST_UNIQUE_BYTES: AtomicU64 = AtomicU64::new(0);
@@ -492,8 +598,8 @@ pub(crate) fn record_counter_estimates(unique_count: usize, unique_bytes: usize)
 
     CACHE_ESTIMATED_UNIQUE_KEYS.add(delta_keys, &[]);
     CACHE_ESTIMATED_UNIQUE_BYTES.add(delta_bytes, &[]);
-    PROM_CACHE_UNIQUE_KEYS_ESTIMATE.inc_by(delta_keys);
-    PROM_CACHE_UNIQUE_BYTES_ESTIMATE.inc_by(delta_bytes);
+    PROM_CACHE_ESTIMATED_UNIQUE_KEYS_TOTAL.inc_by(delta_keys);
+    PROM_CACHE_ESTIMATED_UNIQUE_BYTES_TOTAL.inc_by(delta_bytes);
 }
 
 static CACHE_MEAN_OBJECT_SIZE: LazyLock<Gauge<u64>> = LazyLock::new(|| {
@@ -549,7 +655,7 @@ pub(crate) fn record_object_size_distribution(
     CACHE_MEAN_OBJECT_SIZE.record(mean as u64, &[]);
     CACHE_VARIANCE_OBJECT_SIZE.record(variance.unwrap_or(0) as u64, &[]);
     CACHE_ESTIMATED_MEDIAN_OBJECT_SIZE.record(estimated_median as u64, &[]);
-    PROM_CACHE_MEAN_OBJECT_SIZE.set(mean as i64);
-    PROM_CACHE_VARIANCE_OBJECT_SIZE.set(variance.unwrap_or(0) as i64);
-    PROM_CACHE_ESTIMATED_MEDIAN_OBJECT_SIZE.set(estimated_median as i64);
+    PROM_CACHE_MEAN_OBJECT_SIZE_BYTES.set(mean as i64);
+    PROM_CACHE_VARIANCE_OBJECT_SIZE_BYTES_SQUARED.set(variance.unwrap_or(0) as i64);
+    PROM_CACHE_ESTIMATED_MEDIAN_OBJECT_SIZE_BYTES.set(estimated_median as i64);
 }

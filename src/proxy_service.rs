@@ -140,8 +140,7 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
         let cached_hit = if let Some(cache) = &self.cache {
             if let Some(cached) = cache.get(&cache_key).await {
                 debug!(bucket = %bucket, key = %key, "cache hit");
-                telemetry::record_cache_hit();
-                telemetry::record_cache_hit_bytes(cached.content_length() as u64);
+                telemetry::record_cache_hit(cached.content_length() as u64);
                 cache.report_stats().await;
 
                 if !self.dry_run {
@@ -163,12 +162,10 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
                 Some(cached)
             } else {
                 debug!(bucket = %bucket, key = %key, "cache miss");
-                telemetry::record_cache_miss();
                 None
             }
         } else {
             debug!(bucket = %bucket, key = %key, "cache miss");
-            telemetry::record_cache_miss();
             None
         };
 
@@ -225,7 +222,7 @@ impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
             Ok(bytes) => {
                 let content_length = bytes.len();
                 if cached_hit.is_none() {
-                    telemetry::record_cache_miss_bytes(content_length as u64);
+                    telemetry::record_cache_miss(content_length as u64);
                 }
 
                 let body = if self.dry_run {

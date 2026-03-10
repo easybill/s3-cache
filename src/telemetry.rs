@@ -166,9 +166,9 @@ static PROM_CACHE_OVERSIZED_BYTES_HISTOGRAM: LazyLock<prometheus::Histogram> =
         histogram
     });
 
-static PROM_CACHE_OVERSIZED_REQUESTS_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
+static PROM_CACHE_OVERSIZED_BYTES_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
     let counter = IntCounter::new(
-        "cache_oversized_requests_total",
+        "cache_oversized_bytes_total",
         "Total number of objects encountered exceeding the max cacheable size",
     )
     .unwrap();
@@ -461,9 +461,9 @@ static CACHE_OVERSIZED_BYTES_HISTOGRAM: LazyLock<Histogram<u64>> = LazyLock::new
         .build()
 });
 
-static CACHE_OVERSIZED_REQUESTS_TOTAL: LazyLock<Counter<u64>> = LazyLock::new(|| {
+static CACHE_OVERSIZED_BYTES_TOTAL: LazyLock<Counter<u64>> = LazyLock::new(|| {
     opentelemetry::global::meter(CARGO_CRATE_NAME)
-        .u64_counter("cache.oversized_requests_total")
+        .u64_counter("cache.oversized_bytes_total")
         .with_description("Total number of objects encountered exceeding the max cacheable size")
         .build()
 });
@@ -550,9 +550,9 @@ pub(crate) fn record_cache_eviction(bytes: u64) {
 
 pub(crate) fn record_cache_oversized(bytes: u64) {
     CACHE_OVERSIZED_BYTES_HISTOGRAM.record(bytes, &[]);
-    CACHE_OVERSIZED_REQUESTS_TOTAL.add(1, &[]);
+    CACHE_OVERSIZED_BYTES_TOTAL.add(bytes, &[]);
     PROM_CACHE_OVERSIZED_BYTES_HISTOGRAM.observe(bytes as f64);
-    PROM_CACHE_OVERSIZED_REQUESTS_TOTAL.inc();
+    PROM_CACHE_OVERSIZED_BYTES_TOTAL.inc_by(bytes);
 }
 
 pub(crate) fn record_unique_requested(bytes: u64) {

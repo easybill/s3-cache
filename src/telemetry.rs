@@ -1,5 +1,6 @@
 use std::{sync::LazyLock, time::Duration};
 
+use opentelemetry::KeyValue;
 use opentelemetry::metrics::{Counter, Gauge, Histogram};
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
 use opentelemetry_otlp::{Compression, WithExportConfig, WithTonicConfig};
@@ -588,26 +589,81 @@ pub(crate) fn record_cache_stats(object_count: usize, size_bytes: usize) {
     PROM_CACHE_SIZE_COUNT.set(object_count as i64);
 }
 
-static REQUEST_DURATION_MS: LazyLock<Histogram<u64>> = LazyLock::new(|| {
-    opentelemetry::global::meter(CARGO_CRATE_NAME)
-        .u64_histogram("request.duration_ms")
-        .with_description("Duration of get_object requests in milliseconds")
-        .build()
-});
-
-static RESPONSE_BODY_SIZE: LazyLock<Histogram<u64>> = LazyLock::new(|| {
-    opentelemetry::global::meter(CARGO_CRATE_NAME)
-        .u64_histogram("response.body_size_bytes")
-        .with_description("Size of get_object response bodies in bytes")
-        .build()
-});
-
-pub(crate) fn record_request_duration(duration_ms: u64) {
-    REQUEST_DURATION_MS.record(duration_ms, &[]);
-    PROM_REQUEST_DURATION_MS.observe(duration_ms as f64);
+/// Attributes based on: https://opentelemetry.io/docs/specs/semconv/http/http-metrics/#http-server
+pub(crate) struct RequestDuration {
+    pub(crate) version: &'static str,
+    pub(crate) method: String,
+    pub(crate) scheme: Option<String>,
+    pub(crate) status_code: u16,
+    pub(crate) duration: Duration,
 }
 
-pub(crate) fn record_response_body_size(bytes: u64) {
-    RESPONSE_BODY_SIZE.record(bytes, &[]);
-    PROM_RESPONSE_BODY_SIZE_BYTES.observe(bytes as f64);
+pub(crate) struct ResponseBodySize {
+    pub(crate) version: &'static str,
+    pub(crate) method: String,
+    pub(crate) scheme: Option<String>,
+    pub(crate) status_code: u16,
+    pub(crate) size: u64,
+}
+
+static REQUEST_DURATION_MS: LazyLock<Histogram<f64>> = LazyLock::new(|| {
+    opentelemetry::global::meter(CARGO_CRATE_NAME)
+        .f64_histogram("http.server.request.duration")
+        .with_description("Duration of the request in milliseconds")
+        .with_unit("ms")
+        .build()
+});
+
+static RESPONSE_BODY_SIZE_BYTES: LazyLock<Histogram<f64>> = LazyLock::new(|| {
+    opentelemetry::global::meter(CARGO_CRATE_NAME)
+        .f64_histogram("http.server.response.body.size")
+        .with_description("Size of the response body in bytes")
+        .with_unit("By")
+        .build()
+});
+
+pub(crate) fn record_response_body_size(data: ResponseBodySize) {
+    let mut attributes = vec![
+        KeyValue::new("network.protocol.version", data.version),
+        KeyValue::new("http.request.method", data.method),
+        KeyValue::new("network.protocol.name", "http"),
+        KeyValue::new("http.response.status_code", i64::from(data.status_code)),
+    ];
+
+    match data.scheme {
+        None => {
+            attributes.push(KeyValue::new("url.scheme", "http"));
+        }
+        Some(scheme) => {
+            attributes.push(KeyValue::new("url.scheme", scheme));
+        }
+    }
+
+    let bytes = data.size as f64;
+
+    RESPONSE_BODY_SIZE_BYTES.record(bytes, &attributes);
+    PROM_RESPONSE_BODY_SIZE_BYTES.observe(bytes);
+}
+
+pub(crate) fn record_request_duration(data: RequestDuration) {
+    let mut attributes = vec![
+        KeyValue::new("network.protocol.version", data.version),
+        KeyValue::new("http.request.method", data.method),
+        KeyValue::new("network.protocol.name", "http"),
+        KeyValue::new("http.response.status_code", i64::from(data.status_code)),
+    ];
+
+    match data.scheme {
+        None => {
+            attributes.push(KeyValue::new("url.scheme", "http"));
+        }
+        Some(scheme) => {
+            attributes.push(KeyValue::new("url.scheme", scheme));
+        }
+    }
+
+    let milliseconds = 1000.0 * data.duration.as_secs_f64();
+
+    REQUEST_DURATION_MS.record(milliseconds, &attributes);
+    PROM_REQUEST_DURATION_MS.observe(milliseconds);
 }

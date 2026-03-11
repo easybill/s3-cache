@@ -50,6 +50,26 @@ const OVERSIZED_OBJECT_SIZE_BUCKETS: &[f64] = &[
     1_000_000_000.0, // 1000000 KiB
 ];
 
+const EVICTION_AGE_BUCKETS: &[f64] = &[
+    60.0,         // 1 min
+    300.0,        // 5 min
+    600.0,        // 10 min
+    1_800.0,      // 30 min
+    3_600.0,      // 1 h
+    7_200.0,      // 2 h
+    14_400.0,     // 4 h
+    28_800.0,     // 8 h
+    86_400.0,     // 1 day
+    172_800.0,    // 2 days
+    604_800.0,    // 1 week
+    1_209_600.0,  // 2 weeks
+    2_592_000.0,  // 1 month
+    5_184_000.0,  // 2 months
+    7_776_000.0,  // 3 months
+    15_552_000.0, // 6 months
+    31_536_000.0, // 1 year
+];
+
 pub(crate) fn initialize_telemetry(
     config: &Config,
 ) -> crate::Result<(
@@ -299,6 +319,37 @@ pub(crate) fn record_cache_eviction(bytes: u64) {
     CACHE_EVICTION_BYTES_TOTAL.add(bytes, &[]);
     PROM_CACHE_EVICTION_BYTES_HISTOGRAM.observe(bytes as f64);
     PROM_CACHE_EVICTION_BYTES_TOTAL.inc_by(bytes);
+}
+
+// MARK: Eviction Age
+
+pub(crate) fn record_cache_eviction_age(age_secs: f64) {
+    static CACHE_EVICTION_AGE_HISTOGRAM: LazyLock<Histogram<f64>> = LazyLock::new(|| {
+        opentelemetry::global::meter(CARGO_CRATE_NAME)
+            .f64_histogram("cache.eviction_age_histogram")
+            .with_description("Age of objects (in seconds) at the time of eviction, capped at TTL")
+            .with_unit("s")
+            .build()
+    });
+
+    static PROM_CACHE_EVICTION_AGE_HISTOGRAM: LazyLock<prometheus::Histogram> =
+        LazyLock::new(|| {
+            let histogram = prometheus::Histogram::with_opts(
+                HistogramOpts::new(
+                    "cache_eviction_age_histogram",
+                    "Age of objects (in seconds) at the time of eviction, capped at TTL",
+                )
+                .buckets(EVICTION_AGE_BUCKETS.to_vec()),
+            )
+            .unwrap();
+            PROMETHEUS_REGISTRY
+                .register(Box::new(histogram.clone()))
+                .unwrap();
+            histogram
+        });
+
+    CACHE_EVICTION_AGE_HISTOGRAM.record(age_secs, &[]);
+    PROM_CACHE_EVICTION_AGE_HISTOGRAM.observe(age_secs);
 }
 
 // MARK: Oversized Objects

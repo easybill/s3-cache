@@ -466,7 +466,8 @@ impl S3Cache {
                 max_size: self.max_size,
             };
 
-            telemetry::record_cache_stats(stats.len, stats.size);
+            telemetry::record_cache_size_count(stats.len);
+            telemetry::record_cache_size_bytes(stats.size);
         }
     }
 }

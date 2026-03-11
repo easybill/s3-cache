@@ -12,10 +12,10 @@ jobs:
       fail-fast: true
       matrix:
         container:
-          - { os: "ubuntu-latest", rust_target: "aarch64-unknown-linux-musl" }
-          - { os: "ubuntu-latest", rust_target: "x86_64-unknown-linux-musl" }
-          - { os: "macos-latest", rust_target: "x86_64-apple-darwin" }
-          - { os: "macos-latest", rust_target: "aarch64-apple-darwin" }
+          - { os: "ubuntu-24.04", rust_target: "aarch64-unknown-linux-musl" }
+          - { os: "ubuntu-24.04", rust_target: "x86_64-unknown-linux-musl" }
+          - { os: "macos-15", rust_target: "x86_64-apple-darwin" }
+          - { os: "macos-15", rust_target: "aarch64-apple-darwin" }
     runs-on: "${{ matrix.container.os }}"
     steps:
       - uses: actions/checkout@v4
@@ -43,7 +43,7 @@ jobs:
 
   release:
     name: Release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: ["build"]
     steps:
       - name: Download artifacts
@@ -59,7 +59,7 @@ jobs:
 
   docker_build:
     name: Docker
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: ["build"]
     strategy:
       fail-fast: true
@@ -92,7 +92,7 @@ jobs:
 
   docker_manifest:
     name: Docker Image
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: ["docker_build"]
     steps:
       - name: Login to DockerHub

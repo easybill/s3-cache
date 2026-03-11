@@ -1,4 +1,4 @@
-FROM rust:1-slim-bullseye AS builder
+FROM rust:1.88-slim-bullseye AS builder
 
 RUN apt-get update && apt-get install -y \
     gcc-x86-64-linux-gnu \
@@ -19,7 +19,7 @@ COPY . .
 
 RUN cargo build --release --bin s3_cache --target x86_64-unknown-linux-gnu
 
-FROM debian:bullseye-slim
+FROM debian:11-slim
 
 RUN apt-get update && apt-get install -y \
     ca-certificates \

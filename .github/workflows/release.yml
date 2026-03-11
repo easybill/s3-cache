@@ -36,7 +36,7 @@ jobs:
           cd package
           tar -czf ../s3-cache-${{ matrix.container.rust_target }}.tar.gz s3-cache-${{ matrix.container.rust_target }}
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: s3-cache-${{ matrix.container.rust_target }}
           path: s3-cache-${{ matrix.container.rust_target }}.tar.gz

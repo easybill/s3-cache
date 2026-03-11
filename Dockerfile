@@ -19,7 +19,7 @@ COPY . .
 
 RUN cargo build --release --bin s3_cache --target x86_64-unknown-linux-gnu
 
-FROM debian:11-slim
+FROM debian:13-slim
 
 RUN apt-get update && apt-get install -y \
     ca-certificates \

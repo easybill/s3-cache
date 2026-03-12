@@ -214,10 +214,10 @@ pub(crate) fn record_cache_hit(bytes: u64) {
         counter
     });
 
-    CACHE_HIT_BYTES_HISTOGRAM.record(bytes, &[]);
-    CACHE_HIT_BYTES_TOTAL.add(bytes, &[]);
     PROM_CACHE_HIT_BYTES_HISTOGRAM.observe(bytes as f64);
     PROM_CACHE_HIT_BYTES_TOTAL.inc_by(bytes);
+    CACHE_HIT_BYTES_HISTOGRAM.record(bytes, &[]);
+    CACHE_HIT_BYTES_TOTAL.add(bytes, &[]);
 }
 
 // MARK: Cache Misses
@@ -264,10 +264,10 @@ pub(crate) fn record_cache_miss(bytes: u64) {
         counter
     });
 
-    CACHE_MISS_BYTES_HISTOGRAM.record(bytes, &[]);
-    CACHE_MISS_BYTES_TOTAL.add(bytes, &[]);
     PROM_CACHE_MISS_BYTES_HISTOGRAM.observe(bytes as f64);
     PROM_CACHE_MISS_BYTES_TOTAL.inc_by(bytes);
+    CACHE_MISS_BYTES_HISTOGRAM.record(bytes, &[]);
+    CACHE_MISS_BYTES_TOTAL.add(bytes, &[]);
 }
 
 // MARK: Cache Evictions
@@ -315,10 +315,10 @@ pub(crate) fn record_cache_eviction(bytes: u64) {
         counter
     });
 
-    CACHE_EVICTION_BYTES_HISTOGRAM.record(bytes, &[]);
-    CACHE_EVICTION_BYTES_TOTAL.add(bytes, &[]);
     PROM_CACHE_EVICTION_BYTES_HISTOGRAM.observe(bytes as f64);
     PROM_CACHE_EVICTION_BYTES_TOTAL.inc_by(bytes);
+    CACHE_EVICTION_BYTES_HISTOGRAM.record(bytes, &[]);
+    CACHE_EVICTION_BYTES_TOTAL.add(bytes, &[]);
 }
 
 // MARK: Eviction Age
@@ -348,8 +348,8 @@ pub(crate) fn record_cache_eviction_age(age_secs: f64) {
             histogram
         });
 
-    CACHE_EVICTION_AGE_HISTOGRAM.record(age_secs, &[]);
     PROM_CACHE_EVICTION_AGE_HISTOGRAM.observe(age_secs);
+    CACHE_EVICTION_AGE_HISTOGRAM.record(age_secs, &[]);
 }
 
 // MARK: Oversized Objects
@@ -399,10 +399,10 @@ pub(crate) fn record_cache_oversized(bytes: u64) {
         counter
     });
 
-    CACHE_OVERSIZED_BYTES_HISTOGRAM.record(bytes, &[]);
-    CACHE_OVERSIZED_BYTES_TOTAL.add(bytes, &[]);
     PROM_CACHE_OVERSIZED_BYTES_HISTOGRAM.observe(bytes as f64);
     PROM_CACHE_OVERSIZED_BYTES_TOTAL.inc_by(bytes);
+    CACHE_OVERSIZED_BYTES_HISTOGRAM.record(bytes, &[]);
+    CACHE_OVERSIZED_BYTES_TOTAL.add(bytes, &[]);
 }
 
 // MARK: Unique Requests
@@ -450,10 +450,10 @@ pub(crate) fn record_unique_requested(bytes: u64) {
         counter
     });
 
-    CACHE_UNIQUE_REQUESTED_BYTES_HISTOGRAM.record(bytes, &[]);
-    CACHE_UNIQUE_REQUESTED_BYTES_TOTAL.add(bytes, &[]);
     PROM_CACHE_UNIQUE_REQUESTED_BYTES_HISTOGRAM.observe(bytes as f64);
     PROM_CACHE_UNIQUE_REQUESTED_BYTES_TOTAL.inc_by(bytes);
+    CACHE_UNIQUE_REQUESTED_BYTES_HISTOGRAM.record(bytes, &[]);
+    CACHE_UNIQUE_REQUESTED_BYTES_TOTAL.add(bytes, &[]);
 }
 
 // MARK: Cache Invalidation
@@ -475,8 +475,8 @@ pub(crate) fn record_cache_invalidation() {
         counter
     });
 
-    CACHE_INVALIDATION_TOTAL.add(1, &[]);
     PROM_CACHE_INVALIDATION_TOTAL.inc();
+    CACHE_INVALIDATION_TOTAL.add(1, &[]);
 }
 
 // MARK: Cache Mismatch
@@ -501,8 +501,8 @@ pub(crate) fn record_cache_mismatch() {
         counter
     });
 
-    CACHE_MISMATCH_ERROR_TOTAL.add(1, &[]);
     PROM_CACHE_MISMATCH_ERROR_TOTAL.inc();
+    CACHE_MISMATCH_ERROR_TOTAL.add(1, &[]);
 }
 
 // MARK: Upstream Errors
@@ -524,8 +524,8 @@ pub(crate) fn record_upstream_error() {
         counter
     });
 
-    UPSTREAM_ERROR.add(1, &[]);
     PROM_UPSTREAM_ERROR.inc();
+    UPSTREAM_ERROR.add(1, &[]);
 }
 
 // MARK: Buffering Errors
@@ -552,8 +552,8 @@ pub(crate) fn record_buffering_error() {
         counter
     });
 
-    BUFFERING_ERROR.add(1, &[]);
     PROM_BUFFERING_ERROR.inc();
+    BUFFERING_ERROR.add(1, &[]);
 }
 
 // MARK: Size Count
@@ -575,8 +575,8 @@ pub(crate) fn record_cache_size_count(size_count: usize) {
         gauge
     });
 
-    CACHE_SIZE_COUNT.record(size_count as u64, &[]);
     PROM_CACHE_SIZE_COUNT.set(size_count as i64);
+    CACHE_SIZE_COUNT.record(size_count as u64, &[]);
 }
 
 // MARK: Size Bytes
@@ -597,8 +597,8 @@ pub(crate) fn record_cache_size_bytes(size_bytes: usize) {
         gauge
     });
 
-    CACHE_SIZE_BYTES.record(size_bytes as u64, &[]);
     PROM_CACHE_SIZE_BYTES.set(size_bytes as i64);
+    CACHE_SIZE_BYTES.record(size_bytes as u64, &[]);
 }
 
 // MARK: Request Durations
@@ -656,8 +656,8 @@ pub(crate) fn record_request_duration(data: RequestDuration) {
 
     let milliseconds = 1000.0 * data.duration.as_secs_f64();
 
-    REQUEST_DURATION_MS.record(milliseconds, &attributes);
     PROM_REQUEST_DURATION_MS.observe(milliseconds);
+    REQUEST_DURATION_MS.record(milliseconds, &attributes);
 }
 
 // MARK: Response Body Sizes
@@ -713,6 +713,6 @@ pub(crate) fn record_response_body_size(data: ResponseBodySize) {
 
     let bytes = data.size as f64;
 
-    RESPONSE_BODY_SIZE_BYTES.record(bytes, &attributes);
     PROM_RESPONSE_BODY_SIZE_BYTES.observe(bytes);
+    RESPONSE_BODY_SIZE_BYTES.record(bytes, &attributes);
 }

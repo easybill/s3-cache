@@ -180,6 +180,7 @@ pub(crate) fn record_cache_hit(bytes: u64) {
     static CACHE_HIT_BYTES_HISTOGRAM: LazyLock<Histogram<u64>> = LazyLock::new(|| {
         opentelemetry::global::meter(CARGO_CRATE_NAME)
             .u64_histogram("s3_cache.hit_bytes_histogram")
+            .with_boundaries(OBJECT_SIZE_BUCKETS.to_vec())
             .with_description("Distribution of object sizes on cache hits")
             .build()
     });
@@ -230,6 +231,7 @@ pub(crate) fn record_cache_miss(bytes: u64) {
     static CACHE_MISS_BYTES_HISTOGRAM: LazyLock<Histogram<u64>> = LazyLock::new(|| {
         opentelemetry::global::meter(CARGO_CRATE_NAME)
             .u64_histogram("s3_cache.miss_bytes_histogram")
+            .with_boundaries(OBJECT_SIZE_BUCKETS.to_vec())
             .with_description("Distribution of object sizes on cache misses")
             .build()
     });
@@ -280,6 +282,7 @@ pub(crate) fn record_cache_eviction(bytes: u64) {
     static CACHE_EVICTION_BYTES_HISTOGRAM: LazyLock<Histogram<u64>> = LazyLock::new(|| {
         opentelemetry::global::meter(CARGO_CRATE_NAME)
             .u64_histogram("s3_cache.eviction_bytes_histogram")
+            .with_boundaries(OBJECT_SIZE_BUCKETS.to_vec())
             .with_description("Distribution of object sizes on cache evictions")
             .build()
     });
@@ -331,6 +334,7 @@ pub(crate) fn record_cache_eviction_age(age_secs: f64) {
     static CACHE_EVICTION_AGE_HISTOGRAM: LazyLock<Histogram<f64>> = LazyLock::new(|| {
         opentelemetry::global::meter(CARGO_CRATE_NAME)
             .f64_histogram("s3_cache.eviction_age_histogram")
+            .with_boundaries(EVICTION_AGE_BUCKETS.to_vec())
             .with_description("Age of objects (in seconds) at the time of eviction, capped at TTL")
             .with_unit("s")
             .build()
@@ -362,6 +366,7 @@ pub(crate) fn record_cache_oversized(bytes: u64) {
     static CACHE_OVERSIZED_BYTES_HISTOGRAM: LazyLock<Histogram<u64>> = LazyLock::new(|| {
         opentelemetry::global::meter(CARGO_CRATE_NAME)
             .u64_histogram("s3_cache.oversized_bytes_histogram")
+            .with_boundaries(OVERSIZED_OBJECT_SIZE_BUCKETS.to_vec())
             .with_description("Distribution of object sizes that exceeded the max cacheable size")
             .build()
     });
@@ -415,6 +420,7 @@ pub(crate) fn record_unique_requested(bytes: u64) {
     static CACHE_UNIQUE_REQUESTED_BYTES_HISTOGRAM: LazyLock<Histogram<u64>> = LazyLock::new(|| {
         opentelemetry::global::meter(CARGO_CRATE_NAME)
             .u64_histogram("s3_cache.estimated_unique_bytes_histogram")
+            .with_boundaries(OBJECT_SIZE_BUCKETS.to_vec())
             .with_description("Distribution of estimated unique object sizes")
             .build()
     });
@@ -623,9 +629,16 @@ pub(crate) struct RequestDuration {
 }
 
 pub(crate) fn record_request_duration(data: RequestDuration) {
+    static REQUEST_DURATION_BUCKETS: LazyLock<Vec<f64>> = LazyLock::new(|| {
+        vec![
+            1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 2500.0, 5000.0, 10000.0,
+        ]
+    });
+
     static REQUEST_DURATION_MS: LazyLock<Histogram<f64>> = LazyLock::new(|| {
         opentelemetry::global::meter(CARGO_CRATE_NAME)
             .f64_histogram("http.server.request.duration")
+            .with_boundaries(REQUEST_DURATION_BUCKETS.to_vec())
             .with_description("Duration of the request in milliseconds")
             .with_unit("ms")
             .build()
@@ -637,9 +650,7 @@ pub(crate) fn record_request_duration(data: RequestDuration) {
                 "http_server_request_duration",
                 "Duration of get_object requests in milliseconds",
             )
-            .buckets(vec![
-                1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 2500.0, 5000.0, 10000.0,
-            ]),
+            .buckets(REQUEST_DURATION_BUCKETS.to_vec()),
         )
         .unwrap();
         PROMETHEUS_REGISTRY
@@ -682,9 +693,13 @@ pub(crate) struct ResponseBodySize {
 }
 
 pub(crate) fn record_response_body_size(data: ResponseBodySize) {
+    static RESPONSE_BODY_SIZE_BUCKETS: LazyLock<Vec<f64>> =
+        LazyLock::new(|| prometheus::exponential_buckets(1024.0, 4.0, 10).unwrap());
+
     static RESPONSE_BODY_SIZE_BYTES: LazyLock<Histogram<f64>> = LazyLock::new(|| {
         opentelemetry::global::meter(CARGO_CRATE_NAME)
             .f64_histogram("http.server.response.body.size")
+            .with_boundaries(RESPONSE_BODY_SIZE_BUCKETS.to_vec())
             .with_description("Size of the response body in bytes")
             .with_unit("By")
             .build()
@@ -696,7 +711,7 @@ pub(crate) fn record_response_body_size(data: ResponseBodySize) {
                 "http_server_response_body_size",
                 "Size of get_object response bodies in bytes",
             )
-            .buckets(prometheus::exponential_buckets(1024.0, 4.0, 10).unwrap()),
+            .buckets(RESPONSE_BODY_SIZE_BUCKETS.to_vec()),
         )
         .unwrap();
         PROMETHEUS_REGISTRY

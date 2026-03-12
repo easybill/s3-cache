@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::{sync::LazyLock, time::Duration};
 
 use opentelemetry::KeyValue;
@@ -12,6 +13,7 @@ use crate::{CARGO_CRATE_NAME, Config};
 
 static RESOURCE: LazyLock<opentelemetry_sdk::Resource> = LazyLock::new(|| {
     opentelemetry_sdk::Resource::builder()
+        .with_service_name("s3_cache")
         .with_service_name(CARGO_CRATE_NAME)
         .build()
 });
@@ -19,8 +21,10 @@ static RESOURCE: LazyLock<opentelemetry_sdk::Resource> = LazyLock::new(|| {
 // Prometheus registry and metrics
 
 pub(crate) static PROMETHEUS_REGISTRY: LazyLock<Registry> = LazyLock::new(|| {
-    Registry::new_custom(Some("s3_cache".to_string()), None)
-        .expect("Failed to create Prometheus registry")
+    let mut labels = HashMap::default();
+    labels.insert("service_name".to_string(), "s3_cache".to_string());
+
+    Registry::new_custom(None, Some(labels)).expect("Failed to create Prometheus registry")
 });
 
 const OBJECT_SIZE_BUCKETS: &[f64] = &[
@@ -175,7 +179,7 @@ pub(crate) fn shutdown_metrics(metric_provider: opentelemetry_sdk::metrics::SdkM
 pub(crate) fn record_cache_hit(bytes: u64) {
     static CACHE_HIT_BYTES_HISTOGRAM: LazyLock<Histogram<u64>> = LazyLock::new(|| {
         opentelemetry::global::meter(CARGO_CRATE_NAME)
-            .u64_histogram("cache.hit_bytes_histogram")
+            .u64_histogram("s3_cache.hit_bytes_histogram")
             .with_description("Distribution of object sizes on cache hits")
             .build()
     });
@@ -183,7 +187,7 @@ pub(crate) fn record_cache_hit(bytes: u64) {
     static PROM_CACHE_HIT_BYTES_HISTOGRAM: LazyLock<prometheus::Histogram> = LazyLock::new(|| {
         let histogram = prometheus::Histogram::with_opts(
             HistogramOpts::new(
-                "cache_hit_bytes_histogram",
+                "s3_cache_hit_bytes_histogram",
                 "Distribution of object sizes on cache hits",
             )
             .buckets(OBJECT_SIZE_BUCKETS.to_vec()),
@@ -197,14 +201,14 @@ pub(crate) fn record_cache_hit(bytes: u64) {
 
     static CACHE_HIT_BYTES_TOTAL: LazyLock<Counter<u64>> = LazyLock::new(|| {
         opentelemetry::global::meter(CARGO_CRATE_NAME)
-            .u64_counter("cache.hit_bytes_total")
+            .u64_counter("s3_cache.hit_bytes_total")
             .with_description("Total bytes received from cache hits")
             .build()
     });
 
     static PROM_CACHE_HIT_BYTES_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
         let counter = IntCounter::new(
-            "cache_hit_bytes_total",
+            "s3_cache_hit_bytes_total",
             "Total bytes received from cache hits",
         )
         .unwrap();
@@ -225,7 +229,7 @@ pub(crate) fn record_cache_hit(bytes: u64) {
 pub(crate) fn record_cache_miss(bytes: u64) {
     static CACHE_MISS_BYTES_HISTOGRAM: LazyLock<Histogram<u64>> = LazyLock::new(|| {
         opentelemetry::global::meter(CARGO_CRATE_NAME)
-            .u64_histogram("cache.miss_bytes_histogram")
+            .u64_histogram("s3_cache.miss_bytes_histogram")
             .with_description("Distribution of object sizes on cache misses")
             .build()
     });
@@ -233,7 +237,7 @@ pub(crate) fn record_cache_miss(bytes: u64) {
     static PROM_CACHE_MISS_BYTES_HISTOGRAM: LazyLock<prometheus::Histogram> = LazyLock::new(|| {
         let histogram = prometheus::Histogram::with_opts(
             HistogramOpts::new(
-                "cache_miss_bytes_histogram",
+                "s3_cache_miss_bytes_histogram",
                 "Distribution of object sizes on cache misses",
             )
             .buckets(OBJECT_SIZE_BUCKETS.to_vec()),
@@ -247,14 +251,14 @@ pub(crate) fn record_cache_miss(bytes: u64) {
 
     static CACHE_MISS_BYTES_TOTAL: LazyLock<Counter<u64>> = LazyLock::new(|| {
         opentelemetry::global::meter(CARGO_CRATE_NAME)
-            .u64_counter("cache.miss_bytes_total")
+            .u64_counter("s3_cache.miss_bytes_total")
             .with_description("Total bytes received from cache misses")
             .build()
     });
 
     static PROM_CACHE_MISS_BYTES_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
         let counter = IntCounter::new(
-            "cache_miss_bytes_total",
+            "s3_cache_miss_bytes_total",
             "Total bytes received from cache misses",
         )
         .unwrap();
@@ -275,7 +279,7 @@ pub(crate) fn record_cache_miss(bytes: u64) {
 pub(crate) fn record_cache_eviction(bytes: u64) {
     static CACHE_EVICTION_BYTES_HISTOGRAM: LazyLock<Histogram<u64>> = LazyLock::new(|| {
         opentelemetry::global::meter(CARGO_CRATE_NAME)
-            .u64_histogram("cache.eviction_bytes_histogram")
+            .u64_histogram("s3_cache.eviction_bytes_histogram")
             .with_description("Distribution of object sizes on cache evictions")
             .build()
     });
@@ -284,7 +288,7 @@ pub(crate) fn record_cache_eviction(bytes: u64) {
         LazyLock::new(|| {
             let histogram = prometheus::Histogram::with_opts(
                 HistogramOpts::new(
-                    "cache_eviction_bytes_histogram",
+                    "s3_cache_eviction_bytes_histogram",
                     "Distribution of object sizes on cache evictions",
                 )
                 .buckets(OBJECT_SIZE_BUCKETS.to_vec()),
@@ -298,14 +302,14 @@ pub(crate) fn record_cache_eviction(bytes: u64) {
 
     static CACHE_EVICTION_BYTES_TOTAL: LazyLock<Counter<u64>> = LazyLock::new(|| {
         opentelemetry::global::meter(CARGO_CRATE_NAME)
-            .u64_counter("cache.eviction_bytes_total")
+            .u64_counter("s3_cache.eviction_bytes_total")
             .with_description("Total bytes evicted from cache")
             .build()
     });
 
     static PROM_CACHE_EVICTION_BYTES_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
         let counter = IntCounter::new(
-            "cache_eviction_bytes_total",
+            "s3_cache_eviction_bytes_total",
             "Total bytes evicted from cache",
         )
         .unwrap();
@@ -326,7 +330,7 @@ pub(crate) fn record_cache_eviction(bytes: u64) {
 pub(crate) fn record_cache_eviction_age(age_secs: f64) {
     static CACHE_EVICTION_AGE_HISTOGRAM: LazyLock<Histogram<f64>> = LazyLock::new(|| {
         opentelemetry::global::meter(CARGO_CRATE_NAME)
-            .f64_histogram("cache.eviction_age_histogram")
+            .f64_histogram("s3_cache.eviction_age_histogram")
             .with_description("Age of objects (in seconds) at the time of eviction, capped at TTL")
             .with_unit("s")
             .build()
@@ -336,7 +340,7 @@ pub(crate) fn record_cache_eviction_age(age_secs: f64) {
         LazyLock::new(|| {
             let histogram = prometheus::Histogram::with_opts(
                 HistogramOpts::new(
-                    "cache_eviction_age_histogram",
+                    "s3_cache_eviction_age_histogram",
                     "Age of objects (in seconds) at the time of eviction, capped at TTL",
                 )
                 .buckets(EVICTION_AGE_BUCKETS.to_vec()),
@@ -357,7 +361,7 @@ pub(crate) fn record_cache_eviction_age(age_secs: f64) {
 pub(crate) fn record_cache_oversized(bytes: u64) {
     static CACHE_OVERSIZED_BYTES_HISTOGRAM: LazyLock<Histogram<u64>> = LazyLock::new(|| {
         opentelemetry::global::meter(CARGO_CRATE_NAME)
-            .u64_histogram("cache.oversized_bytes_histogram")
+            .u64_histogram("s3_cache.oversized_bytes_histogram")
             .with_description("Distribution of object sizes that exceeded the max cacheable size")
             .build()
     });
@@ -366,7 +370,7 @@ pub(crate) fn record_cache_oversized(bytes: u64) {
         LazyLock::new(|| {
             let histogram = prometheus::Histogram::with_opts(
                 HistogramOpts::new(
-                    "cache_oversized_bytes_histogram",
+                    "s3_cache_oversized_bytes_histogram",
                     "Distribution of object sizes that exceeded the max cacheable size",
                 )
                 .buckets(OVERSIZED_OBJECT_SIZE_BUCKETS.to_vec()),
@@ -380,7 +384,7 @@ pub(crate) fn record_cache_oversized(bytes: u64) {
 
     static CACHE_OVERSIZED_BYTES_TOTAL: LazyLock<Counter<u64>> = LazyLock::new(|| {
         opentelemetry::global::meter(CARGO_CRATE_NAME)
-            .u64_counter("cache.oversized_bytes_total")
+            .u64_counter("s3_cache.oversized_bytes_total")
             .with_description(
                 "Total number of objects encountered exceeding the max cacheable size",
             )
@@ -389,7 +393,7 @@ pub(crate) fn record_cache_oversized(bytes: u64) {
 
     static PROM_CACHE_OVERSIZED_BYTES_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
         let counter = IntCounter::new(
-            "cache_oversized_bytes_total",
+            "s3_cache_oversized_bytes_total",
             "Total number of objects encountered exceeding the max cacheable size",
         )
         .unwrap();
@@ -410,7 +414,7 @@ pub(crate) fn record_cache_oversized(bytes: u64) {
 pub(crate) fn record_unique_requested(bytes: u64) {
     static CACHE_UNIQUE_REQUESTED_BYTES_HISTOGRAM: LazyLock<Histogram<u64>> = LazyLock::new(|| {
         opentelemetry::global::meter(CARGO_CRATE_NAME)
-            .u64_histogram("cache.estimated_unique_bytes_histogram")
+            .u64_histogram("s3_cache.estimated_unique_bytes_histogram")
             .with_description("Distribution of estimated unique object sizes")
             .build()
     });
@@ -419,7 +423,7 @@ pub(crate) fn record_unique_requested(bytes: u64) {
         LazyLock::new(|| {
             let histogram = prometheus::Histogram::with_opts(
                 HistogramOpts::new(
-                    "cache_estimated_unique_bytes_histogram",
+                    "s3_cache_estimated_unique_bytes_histogram",
                     "Distribution of estimated unique object sizes",
                 )
                 .buckets(OBJECT_SIZE_BUCKETS.to_vec()),
@@ -433,14 +437,14 @@ pub(crate) fn record_unique_requested(bytes: u64) {
 
     static CACHE_UNIQUE_REQUESTED_BYTES_TOTAL: LazyLock<Counter<u64>> = LazyLock::new(|| {
         opentelemetry::global::meter(CARGO_CRATE_NAME)
-            .u64_counter("cache.estimated_unique_bytes_total")
+            .u64_counter("s3_cache.estimated_unique_bytes_total")
             .with_description("Estimated total bytes for unique keys accessed")
             .build()
     });
 
     static PROM_CACHE_UNIQUE_REQUESTED_BYTES_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
         let counter = IntCounter::new(
-            "cache_estimated_unique_bytes_total",
+            "s3_cache_estimated_unique_bytes_total",
             "Estimated total bytes for unique keys accessed",
         )
         .unwrap();
@@ -461,14 +465,17 @@ pub(crate) fn record_unique_requested(bytes: u64) {
 pub(crate) fn record_cache_invalidation() {
     static CACHE_INVALIDATION_TOTAL: LazyLock<Counter<u64>> = LazyLock::new(|| {
         opentelemetry::global::meter(CARGO_CRATE_NAME)
-            .u64_counter("cache.invalidation_total")
+            .u64_counter("s3_cache.invalidation_total")
             .with_description("Number of cache invalidations")
             .build()
     });
 
     static PROM_CACHE_INVALIDATION_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
-        let counter =
-            IntCounter::new("cache_invalidation_total", "Number of cache invalidations").unwrap();
+        let counter = IntCounter::new(
+            "s3_cache_invalidation_total",
+            "Number of cache invalidations",
+        )
+        .unwrap();
         PROMETHEUS_REGISTRY
             .register(Box::new(counter.clone()))
             .unwrap();
@@ -484,14 +491,14 @@ pub(crate) fn record_cache_invalidation() {
 pub(crate) fn record_cache_mismatch() {
     static CACHE_MISMATCH_ERROR_TOTAL: LazyLock<Counter<u64>> = LazyLock::new(|| {
         opentelemetry::global::meter(CARGO_CRATE_NAME)
-            .u64_counter("cache.mismatch_error_total")
+            .u64_counter("s3_cache.mismatch_error_total")
             .with_description("Number of cache mismatches detected in dry-run mode")
             .build()
     });
 
     static PROM_CACHE_MISMATCH_ERROR_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
         let counter = IntCounter::new(
-            "cache_mismatch_error_total",
+            "s3_cache_mismatch_error_total",
             "Number of cache mismatches detected in dry-run mode",
         )
         .unwrap();
@@ -510,14 +517,17 @@ pub(crate) fn record_cache_mismatch() {
 pub(crate) fn record_upstream_error() {
     static UPSTREAM_ERROR: LazyLock<Counter<u64>> = LazyLock::new(|| {
         opentelemetry::global::meter(CARGO_CRATE_NAME)
-            .u64_counter("cache.upstream_error")
+            .u64_counter("s3_cache.upstream_error")
             .with_description("Number of upstream S3 errors")
             .build()
     });
 
     static PROM_UPSTREAM_ERROR: LazyLock<IntCounter> = LazyLock::new(|| {
-        let counter =
-            IntCounter::new("cache_upstream_error_total", "Number of upstream S3 errors").unwrap();
+        let counter = IntCounter::new(
+            "s3_cache_upstream_error_total",
+            "Number of upstream S3 errors",
+        )
+        .unwrap();
         PROMETHEUS_REGISTRY
             .register(Box::new(counter.clone()))
             .unwrap();
@@ -533,7 +543,7 @@ pub(crate) fn record_upstream_error() {
 pub(crate) fn record_buffering_error() {
     static BUFFERING_ERROR: LazyLock<Counter<u64>> = LazyLock::new(|| {
         opentelemetry::global::meter(CARGO_CRATE_NAME)
-            .u64_counter("cache.buffering_error")
+            .u64_counter("s3_cache.buffering_error")
             .with_description(
                 "Number of buffering errors (object exceeded size limit during streaming)",
             )
@@ -542,7 +552,7 @@ pub(crate) fn record_buffering_error() {
 
     static PROM_BUFFERING_ERROR: LazyLock<IntCounter> = LazyLock::new(|| {
         let counter = IntCounter::new(
-            "cache_buffering_error_total",
+            "s3_cache_buffering_error_total",
             "Number of buffering errors (object exceeded size limit during streaming)",
         )
         .unwrap();
@@ -561,14 +571,14 @@ pub(crate) fn record_buffering_error() {
 pub(crate) fn record_cache_size_count(size_count: usize) {
     static CACHE_SIZE_COUNT: LazyLock<Gauge<u64>> = LazyLock::new(|| {
         opentelemetry::global::meter(CARGO_CRATE_NAME)
-            .u64_gauge("cache.size_count")
+            .u64_gauge("s3_cache.size_count")
             .with_description("Current number of objects in cache")
             .build()
     });
 
     static PROM_CACHE_SIZE_COUNT: LazyLock<IntGauge> = LazyLock::new(|| {
         let gauge =
-            IntGauge::new("cache_size_count", "Current number of objects in cache").unwrap();
+            IntGauge::new("s3_cache_size_count", "Current number of objects in cache").unwrap();
         PROMETHEUS_REGISTRY
             .register(Box::new(gauge.clone()))
             .unwrap();
@@ -584,13 +594,13 @@ pub(crate) fn record_cache_size_count(size_count: usize) {
 pub(crate) fn record_cache_size_bytes(size_bytes: usize) {
     static CACHE_SIZE_BYTES: LazyLock<Gauge<u64>> = LazyLock::new(|| {
         opentelemetry::global::meter(CARGO_CRATE_NAME)
-            .u64_gauge("cache.size_bytes")
+            .u64_gauge("s3_cache.size_bytes")
             .with_description("Current cache size in bytes")
             .build()
     });
 
     static PROM_CACHE_SIZE_BYTES: LazyLock<IntGauge> = LazyLock::new(|| {
-        let gauge = IntGauge::new("cache_size_bytes", "Current cache size in bytes").unwrap();
+        let gauge = IntGauge::new("s3_cache_size_bytes", "Current cache size in bytes").unwrap();
         PROMETHEUS_REGISTRY
             .register(Box::new(gauge.clone()))
             .unwrap();

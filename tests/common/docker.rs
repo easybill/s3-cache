@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -73,24 +72,26 @@ pub const CLIENT_SECRET: &str = "testsecret";
 // MARK: - start_proxy
 
 pub async fn start_proxy(minio_api_port: u16) -> TestProxy {
-    let mut env: HashMap<String, String> = HashMap::new();
-    env.insert(
-        "UPSTREAM_ENDPOINT".into(),
-        format!("http://127.0.0.1:{minio_api_port}"),
-    );
-    env.insert("UPSTREAM_ACCESS_KEY_ID".into(), "minioadmin".into());
-    env.insert("UPSTREAM_SECRET_ACCESS_KEY".into(), "minioadmin".into());
-    env.insert("CLIENT_ACCESS_KEY_ID".into(), CLIENT_KEY_ID.into());
-    env.insert("CLIENT_SECRET_ACCESS_KEY".into(), CLIENT_SECRET.into());
-    // Port 0: OS assigns a free port
-    env.insert("LISTEN_ADDR".into(), "127.0.0.1:0".into());
-    // Small limits for test speed; 1 MB max object size enables the large-object test
-    env.insert("CACHE_MAX_ENTRIES".into(), "100".into());
-    env.insert("CACHE_MAX_SIZE_BYTES".into(), "104857600".into()); // 100 MB
-    env.insert("CACHE_MAX_OBJECT_SIZE_BYTES".into(), "1048576".into()); // 1 MB
-    // No OTEL or Prometheus dirs — no network/filesystem side effects in tests
-
-    let config = s3_cache::Config::from_env(&env);
+    let config = s3_cache::Config {
+        listen_addr: "127.0.0.1:0".parse().unwrap(), // Port 0: OS assigns a free port
+        upstream_endpoint: format!("http://127.0.0.1:{minio_api_port}"),
+        upstream_access_key_id: "minioadmin".to_string(),
+        upstream_secret_access_key: "minioadmin".to_string(),
+        upstream_region: "us-east-1".to_string(),
+        client_access_key_id: CLIENT_KEY_ID.to_string(),
+        client_secret_access_key: CLIENT_SECRET.to_string(),
+        cache_enabled: true,
+        cache_dry_run: false,
+        cache_shards: 16,
+        // Small limits for test speed; 1 MB max object size enables the large-object test
+        cache_max_entries: 100,
+        cache_max_size_bytes: 104_857_600,      // 100 MB
+        cache_max_object_size_bytes: 1_048_576, // 1 MB
+        cache_ttl_seconds: 86_400,
+        worker_threads: 4,
+        otel_grpc_endpoint_url: None, // no network side effects in tests
+        prometheus_textfile_dir: None, // no filesystem side effects in tests
+    };
 
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
     let (addr_tx, addr_rx) = tokio::sync::oneshot::channel::<SocketAddr>();

@@ -1,134 +1,97 @@
-use std::{
-    collections::HashMap,
-    fmt::{Display, Formatter},
-    net::SocketAddr,
-};
+use std::fmt::{Display, Formatter};
+use std::net::SocketAddr;
 
-/// Configuration for the S3 caching proxy server.
+use clap::Parser;
+
+/// S3-compatible caching proxy.
 ///
-/// All settings can be loaded from environment variables via [`from_env`](Self::from_env).
+/// All options can be set as CLI flags (`--upstream-endpoint`) or environment variables
+/// (`UPSTREAM_ENDPOINT`). CLI flags take precedence over environment variables.
+#[derive(Parser)]
+#[command(version, about = "S3-compatible caching proxy")]
 pub struct Config {
+    /// Proxy listen address
+    #[arg(long, env = "LISTEN_ADDR", default_value = "0.0.0.0:8080")]
     pub listen_addr: SocketAddr,
+
+    /// S3-compatible upstream endpoint URL
+    #[arg(long, env = "UPSTREAM_ENDPOINT")]
     pub upstream_endpoint: String,
+
+    /// Access key for upstream S3
+    #[arg(long, env = "UPSTREAM_ACCESS_KEY_ID")]
     pub upstream_access_key_id: String,
+
+    /// Secret key for upstream S3
+    #[arg(long, env = "UPSTREAM_SECRET_ACCESS_KEY")]
     pub upstream_secret_access_key: String,
+
+    /// AWS region for signing upstream requests.
+    /// Must match the region your MinIO/S3 backend is configured with, or `us-east-1`
+    /// (MinIO accepts `us-east-1` as a backward-compatibility alias for any region).
+    #[arg(long, env = "UPSTREAM_REGION", default_value = "us-east-1")]
     pub upstream_region: String,
+
+    /// Access key accepted from proxy clients
+    #[arg(long, env = "CLIENT_ACCESS_KEY_ID")]
     pub client_access_key_id: String,
+
+    /// Secret key accepted from proxy clients
+    #[arg(long, env = "CLIENT_SECRET_ACCESS_KEY")]
     pub client_secret_access_key: String,
+
+    /// Enable caching
+    #[arg(long, env = "CACHE_ENABLED", default_value_t = true, action = clap::ArgAction::Set)]
     pub cache_enabled: bool,
-    pub cache_dryrun: bool,
+
+    /// Dry-run mode: serve from cache but do not write new entries
+    #[arg(long, env = "CACHE_DRY_RUN", default_value_t = false, action = clap::ArgAction::Set)]
+    pub cache_dry_run: bool,
+
+    /// Number of cache shards
+    #[arg(long, env = "CACHE_SHARDS", default_value_t = 16)]
     pub cache_shards: usize,
+
+    /// Maximum number of cache entries
+    #[arg(long, env = "CACHE_MAX_ENTRIES", default_value_t = 10_000)]
     pub cache_max_entries: usize,
+
+    /// Maximum cache size in bytes (default: 1 GB)
+    #[arg(long, env = "CACHE_MAX_SIZE_BYTES", default_value_t = 1_073_741_824)]
     pub cache_max_size_bytes: usize,
+
+    /// Maximum cacheable object size in bytes (default: 10 MB)
+    #[arg(
+        long,
+        env = "CACHE_MAX_OBJECT_SIZE_BYTES",
+        default_value_t = 10_485_760
+    )]
     pub cache_max_object_size_bytes: usize,
+
+    /// Cache time-to-live in seconds (default: 24 hours)
+    #[arg(long, env = "CACHE_TTL_SECONDS", default_value_t = 86_400)]
     pub cache_ttl_seconds: usize,
+
+    /// Tokio worker thread count
+    #[arg(long, env = "WORKER_THREADS", default_value_t = 4)]
     pub worker_threads: usize,
+
+    /// OpenTelemetry OTLP gRPC endpoint
+    #[arg(long, env = "OTEL_GRPC_ENDPOINT_URL")]
     pub otel_grpc_endpoint_url: Option<String>,
+
+    /// Prometheus textfile collector directory
+    #[arg(long, env = "PROMETHEUS_TEXTFILE_DIR")]
     pub prometheus_textfile_dir: Option<String>,
 }
 
 impl Config {
-    /// Loads configuration from environment variables.
-    ///
-    /// # Required environment variables
-    ///
-    /// - `UPSTREAM_ENDPOINT`: S3-compatible endpoint URL
-    /// - `UPSTREAM_ACCESS_KEY_ID`: Access key for upstream S3
-    /// - `UPSTREAM_SECRET_ACCESS_KEY`: Secret key for upstream S3
-    /// - `CLIENT_ACCESS_KEY_ID`: Access key for proxy clients
-    /// - `CLIENT_SECRET_ACCESS_KEY`: Secret key for proxy clients
-    ///
-    /// # Optional environment variables with defaults
-    ///
-    /// - `LISTEN_ADDR`: Proxy listen address (default: `0.0.0.0:8080`)
-    /// - `UPSTREAM_REGION`: AWS region used to sign upstream requests (default: `us-east-1`).
-    ///   Must match the region your MinIO/S3 backend is configured with, **or** `us-east-1`
-    ///   (MinIO accepts `us-east-1` as a backward-compatibility alias for any configured region).
-    /// - `CACHE_ENABLED`: Enable caching (default: `true`)
-    /// - `CACHE_DRYRUN`: Dry-run mode for cache validation (default: `false`)
-    /// - `CACHE_SHARDS`: Number of cache shards (default: `16`)
-    /// - `CACHE_MAX_ENTRIES`: Maximum cache entries (default: `10000`)
-    /// - `CACHE_MAX_SIZE_BYTES`: Maximum cache size in bytes (default: `1073741824` = 1 GB)
-    /// - `CACHE_MAX_OBJECT_SIZE_BYTES`: Maximum cacheable object size (default: `10485760` = 10 MB)
-    /// - `CACHE_TTL_SECONDS`: Cache time-to-live in seconds (default: `86400` = 24 hours)
-    /// - `WORKER_THREADS`: Tokio worker threads (default: `4`)
-    /// - `OTEL_GRPC_ENDPOINT_URL`: OpenTelemetry OTLP endpoint (optional)
-    /// - `PROMETHEUS_TEXTFILE_DIR`: Prometheus textfile collector directory (optional)
+    /// Validates cross-field constraints. Call this after parsing.
     ///
     /// # Panics
     ///
-    /// Panics if required variables are missing or if validation fails.
-    pub fn from_env(vars: &HashMap<String, String>) -> Self {
-        let config = Self {
-            listen_addr: vars
-                .get("LISTEN_ADDR")
-                .map(|s| s.parse().expect("invalid LISTEN_ADDR"))
-                .unwrap_or_else(|| "0.0.0.0:8080".parse().unwrap()),
-            upstream_endpoint: vars
-                .get("UPSTREAM_ENDPOINT")
-                .cloned()
-                .expect("UPSTREAM_ENDPOINT is required"),
-            upstream_access_key_id: vars
-                .get("UPSTREAM_ACCESS_KEY_ID")
-                .cloned()
-                .expect("UPSTREAM_ACCESS_KEY_ID is required"),
-            upstream_secret_access_key: vars
-                .get("UPSTREAM_SECRET_ACCESS_KEY")
-                .cloned()
-                .expect("UPSTREAM_SECRET_ACCESS_KEY is required"),
-            upstream_region: vars
-                .get("UPSTREAM_REGION")
-                .cloned()
-                .unwrap_or_else(|| "us-east-1".to_string()),
-            client_access_key_id: vars
-                .get("CLIENT_ACCESS_KEY_ID")
-                .cloned()
-                .expect("CLIENT_ACCESS_KEY_ID is required"),
-            client_secret_access_key: vars
-                .get("CLIENT_SECRET_ACCESS_KEY")
-                .cloned()
-                .expect("CLIENT_SECRET_ACCESS_KEY is required"),
-            cache_enabled: vars
-                .get("CACHE_ENABLED")
-                .map(|s| s.parse().expect("invalid CACHE_ENABLED"))
-                .unwrap_or(true),
-            cache_dryrun: vars
-                .get("CACHE_DRYRUN")
-                .map(|s| s.parse().expect("invalid CACHE_DRYRUN"))
-                .unwrap_or(false),
-            cache_shards: vars
-                .get("CACHE_SHARDS")
-                .map(|s| s.parse().expect("invalid CACHE_SHARDS"))
-                .unwrap_or(16),
-            cache_max_entries: vars
-                .get("CACHE_MAX_ENTRIES")
-                .map(|s| s.parse().expect("invalid CACHE_MAX_ENTRIES"))
-                .unwrap_or(10_000),
-            cache_max_size_bytes: vars
-                .get("CACHE_MAX_SIZE_BYTES")
-                .map(|s| s.parse().expect("invalid CACHE_MAX_SIZE_BYTES"))
-                .unwrap_or(1_073_741_824),
-            cache_max_object_size_bytes: vars
-                .get("CACHE_MAX_OBJECT_SIZE_BYTES")
-                .map(|s: &String| s.parse().expect("invalid CACHE_MAX_OBJECT_SIZE_BYTES"))
-                .unwrap_or(10_485_760),
-            cache_ttl_seconds: vars
-                .get("CACHE_TTL_SECONDS")
-                .map(|s| s.parse().expect("invalid CACHE_TTL_SECONDS"))
-                .unwrap_or(86_400),
-            worker_threads: vars
-                .get("WORKER_THREADS")
-                .map(|s| s.parse().expect("invalid WORKER_THREADS"))
-                .unwrap_or(4),
-            otel_grpc_endpoint_url: vars.get("OTEL_GRPC_ENDPOINT_URL").cloned(),
-            prometheus_textfile_dir: vars.get("PROMETHEUS_TEXTFILE_DIR").cloned(),
-        };
-
-        config.validate();
-        config
-    }
-
-    fn validate(&self) {
+    /// Panics if any constraint is violated.
+    pub fn validate(&self) {
         if self.cache_max_size_bytes < self.cache_max_object_size_bytes {
             panic!(
                 "Invalid configuration: cache_max_size_bytes ({}) must be >= max_cacheable_object_size ({})",
@@ -161,7 +124,7 @@ impl Display for Config {
             "Config{{ listen_addr: {}, upstream_endpoint: {}, upstream_region: {}, \
              cache_max_entries: {}, cache_max_size_bytes: {}, cache_ttl_seconds: {}, \
              max_cacheable_object_size: {}, otel_grpc_endpoint_url: {:?}, cache_shards: {}, \
-             cache_dryrun: {}, worker_threads: {}, prometheus_textfile_dir: {:?} }}",
+             cache_dry_run: {}, worker_threads: {}, prometheus_textfile_dir: {:?} }}",
             self.listen_addr,
             self.upstream_endpoint,
             self.upstream_region,
@@ -171,7 +134,7 @@ impl Display for Config {
             self.cache_max_object_size_bytes,
             self.otel_grpc_endpoint_url,
             self.cache_shards,
-            self.cache_dryrun,
+            self.cache_dry_run,
             self.worker_threads,
             self.prometheus_textfile_dir,
         )
@@ -180,34 +143,36 @@ impl Display for Config {
 
 #[cfg(test)]
 mod tests {
+    use std::net::SocketAddr;
+
     use super::*;
 
-    fn minimal_env() -> HashMap<String, String> {
-        let mut env = HashMap::new();
-        env.insert(
-            "UPSTREAM_ENDPOINT".to_string(),
-            "http://minio:9000".to_string(),
-        );
-        env.insert(
-            "UPSTREAM_ACCESS_KEY_ID".to_string(),
-            "minioadmin".to_string(),
-        );
-        env.insert(
-            "UPSTREAM_SECRET_ACCESS_KEY".to_string(),
-            "minioadmin".to_string(),
-        );
-        env.insert("CLIENT_ACCESS_KEY_ID".to_string(), "testclient".to_string());
-        env.insert(
-            "CLIENT_SECRET_ACCESS_KEY".to_string(),
-            "testclient".to_string(),
-        );
-        env
+    fn minimal_config() -> Config {
+        Config {
+            listen_addr: "0.0.0.0:8080".parse::<SocketAddr>().unwrap(),
+            upstream_endpoint: "http://minio:9000".to_string(),
+            upstream_access_key_id: "minioadmin".to_string(),
+            upstream_secret_access_key: "minioadmin".to_string(),
+            upstream_region: "us-east-1".to_string(),
+            client_access_key_id: "testclient".to_string(),
+            client_secret_access_key: "testclient".to_string(),
+            cache_enabled: true,
+            cache_dry_run: false,
+            cache_shards: 16,
+            cache_max_entries: 10_000,
+            cache_max_size_bytes: 1_073_741_824,
+            cache_max_object_size_bytes: 10_485_760,
+            cache_ttl_seconds: 86_400,
+            worker_threads: 4,
+            otel_grpc_endpoint_url: None,
+            prometheus_textfile_dir: None,
+        }
     }
 
     #[test]
     fn config_valid() {
-        let env = minimal_env();
-        let config = Config::from_env(&env);
+        let config = minimal_config();
+        config.validate();
         assert_eq!(config.cache_max_entries, 10_000);
         assert_eq!(config.cache_max_size_bytes, 1_073_741_824);
         assert_eq!(config.cache_max_object_size_bytes, 10_485_760);
@@ -216,36 +181,33 @@ mod tests {
     #[test]
     #[should_panic(expected = "cache_max_size_bytes")]
     fn config_max_size_too_small() {
-        let mut env = minimal_env();
-        env.insert("CACHE_MAX_SIZE_BYTES".to_string(), "1000".to_string());
-        env.insert(
-            "CACHE_MAX_OBJECT_SIZE_BYTES".to_string(),
-            "2000".to_string(),
-        );
-        Config::from_env(&env);
+        let mut config = minimal_config();
+        config.cache_max_size_bytes = 1000;
+        config.cache_max_object_size_bytes = 2000;
+        config.validate();
     }
 
     #[test]
     #[should_panic(expected = "cache_ttl_seconds")]
     fn config_zero_ttl() {
-        let mut env = minimal_env();
-        env.insert("CACHE_TTL_SECONDS".to_string(), "0".to_string());
-        Config::from_env(&env);
+        let mut config = minimal_config();
+        config.cache_ttl_seconds = 0;
+        config.validate();
     }
 
     #[test]
     #[should_panic(expected = "cache_max_entries")]
     fn config_zero_max_entries() {
-        let mut env = minimal_env();
-        env.insert("CACHE_MAX_ENTRIES".to_string(), "0".to_string());
-        Config::from_env(&env);
+        let mut config = minimal_config();
+        config.cache_max_entries = 0;
+        config.validate();
     }
 
     #[test]
     #[should_panic(expected = "worker_threads")]
     fn config_zero_worker_threads() {
-        let mut env = minimal_env();
-        env.insert("WORKER_THREADS".to_string(), "0".to_string());
-        Config::from_env(&env);
+        let mut config = minimal_config();
+        config.worker_threads = 0;
+        config.validate();
     }
 }

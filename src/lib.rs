@@ -13,26 +13,6 @@
 //! - **Cache Invalidation**: Automatic invalidation on PUT/DELETE operations
 //! - **Dry-run Mode**: Validate cache correctness without serving cached data
 //! - **Telemetry**: OpenTelemetry metrics and Prometheus support
-//!
-//! ## Example
-//!
-//! ```no_run
-//! use s3_cache::{Config, start_app};
-//! use std::collections::HashMap;
-//!
-//! #[tokio::main]
-//! async fn main() -> s3_cache::Result<()> {
-//!     let mut env = HashMap::new();
-//!     env.insert("UPSTREAM_ENDPOINT".to_string(), "http://s3.amazonaws.com".to_string());
-//!     env.insert("UPSTREAM_ACCESS_KEY_ID".to_string(), "your-key".to_string());
-//!     env.insert("UPSTREAM_SECRET_ACCESS_KEY".to_string(), "your-secret".to_string());
-//!     env.insert("CLIENT_ACCESS_KEY_ID".to_string(), "client-key".to_string());
-//!     env.insert("CLIENT_SECRET_ACCESS_KEY".to_string(), "client-secret".to_string());
-//!
-//!     let config = Config::from_env(&env);
-//!     start_app(config).await
-//! }
-//! ```
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -80,19 +60,13 @@ static CARGO_CRATE_NAME: &str = env!("CARGO_CRATE_NAME");
 /// # Example
 ///
 /// ```no_run
+/// use clap::Parser;
+///
 /// use s3_cache::{Config, start_app};
-/// use std::collections::HashMap;
 ///
 /// # #[tokio::main]
 /// # async fn main() -> s3_cache::Result<()> {
-/// let mut env = HashMap::new();
-/// env.insert("UPSTREAM_ENDPOINT".to_string(), "http://localhost:9000".to_string());
-/// env.insert("UPSTREAM_ACCESS_KEY_ID".to_string(), "minioadmin".to_string());
-/// env.insert("UPSTREAM_SECRET_ACCESS_KEY".to_string(), "minioadmin".to_string());
-/// env.insert("CLIENT_ACCESS_KEY_ID".to_string(), "client".to_string());
-/// env.insert("CLIENT_SECRET_ACCESS_KEY".to_string(), "secret".to_string());
-///
-/// let config = Config::from_env(&env);
+/// let config = Config::parse();
 /// start_app(config).await?;
 /// # Ok(())
 /// # }
@@ -164,7 +138,7 @@ where
             proxy,
             cache,
             config.cache_max_object_size_bytes,
-            config.cache_dryrun,
+            config.cache_dry_run,
         ));
 
     // Build S3 service with auth

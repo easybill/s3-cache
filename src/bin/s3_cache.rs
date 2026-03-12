@@ -1,5 +1,4 @@
-use std::collections::HashMap;
-
+use clap::Parser;
 use s3_cache::{Config, start_app};
 
 fn main() {
@@ -8,11 +7,8 @@ fn main() {
     // other thread makes sure that this invariant is upheld.
     unsafe { std::env::set_var("AWS_EC2_METADATA_DISABLED", "true") };
 
-    let vars: HashMap<String, String> = std::env::vars().collect();
-    let config = Config::from_env(&vars);
-
-    // Drop ENV hashmap to free memory before we start the server.
-    drop(vars);
+    let config = Config::parse();
+    config.validate();
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()

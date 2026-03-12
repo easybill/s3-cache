@@ -624,7 +624,7 @@ pub(crate) fn record_request_duration(data: RequestDuration) {
     static PROM_REQUEST_DURATION_MS: LazyLock<prometheus::Histogram> = LazyLock::new(|| {
         let histogram = prometheus::Histogram::with_opts(
             HistogramOpts::new(
-                "request_duration_ms",
+                "http_server_request_duration",
                 "Duration of get_object requests in milliseconds",
             )
             .buckets(vec![
@@ -683,7 +683,7 @@ pub(crate) fn record_response_body_size(data: ResponseBodySize) {
     static PROM_RESPONSE_BODY_SIZE_BYTES: LazyLock<prometheus::Histogram> = LazyLock::new(|| {
         let histogram = prometheus::Histogram::with_opts(
             HistogramOpts::new(
-                "response_body_size_bytes",
+                "http_server_response_body_size",
                 "Size of get_object response bodies in bytes",
             )
             .buckets(prometheus::exponential_buckets(1024.0, 4.0, 10).unwrap()),

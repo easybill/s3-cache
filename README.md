@@ -37,26 +37,27 @@ When clients modify objects, the proxy invalidates all related cache entries:
 
 ## Configuration
 
-All configuration is done via environment variables:
+All options can be set as CLI flags (e.g. `--upstream-endpoint`) or environment variables (e.g. `UPSTREAM_ENDPOINT`). CLI flags take precedence over environment variables.
 
-| Variable                      | Default              | Description                           |
-| ----------------------------- | -------------------- | ------------------------------------- |
-| `LISTEN_ADDR`                 | `0.0.0.0:8080`       | Proxy listen address                  |
-| `UPSTREAM_ENDPOINT`           | *(required)*         | S3 endpoint URL                       |
-| `UPSTREAM_ACCESS_KEY_ID`      | *(required)*         | Proxy's S3 credentials                |
-| `UPSTREAM_SECRET_ACCESS_KEY`  | *(required)*         | Proxy's S3 credentials                |
-| `UPSTREAM_REGION`             | `us-east-1`          | S3 region                             |
-| `CLIENT_ACCESS_KEY_ID`        | *(required)*         | Client auth credentials               |
-| `CLIENT_SECRET_ACCESS_KEY`    | *(required)*         | Client auth credentials               |
-| `CACHE_ENABLED`               | `true`               | Enable/disable caching                |
-| `CACHE_DRYRUN`                | `false`              | Dry-run verification mode (see below) |
-| `CACHE_SHARDS`                | `16`                 | Number of cache shards                |
-| `CACHE_MAX_ENTRIES`           | `10000`              | Max cached objects                    |
-| `CACHE_MAX_SIZE_BYTES`        | `1073741824` (1 GiB) | Max cache size                        |
-| `CACHE_MAX_OBJECT_SIZE_BYTES` | `10485760` (10 MiB)  | Skip caching above this               |
-| `CACHE_TTL_SECONDS`           | `86400` (24h)        | TTL for cached entries                |
-| `WORKER_THREADS`              | `4`                  | Tokio worker threads                  |
-| `OTEL_GRPC_ENDPOINT_URL`      | *(optional)*         | OpenTelemetry collector               |
+| Variable / Flag                                           | Default              | Description                           |
+| --------------------------------------------------------- | -------------------- | ------------------------------------- |
+| `LISTEN_ADDR` / `--listen-addr`                           | `0.0.0.0:8080`       | Proxy listen address                  |
+| `UPSTREAM_ENDPOINT` / `--upstream-endpoint`               | *(required)*         | S3 endpoint URL                       |
+| `UPSTREAM_ACCESS_KEY_ID` / `--upstream-access-key-id`     | *(required)*         | Proxy's S3 credentials                |
+| `UPSTREAM_SECRET_ACCESS_KEY` / `--upstream-secret-...`    | *(required)*         | Proxy's S3 credentials                |
+| `UPSTREAM_REGION` / `--upstream-region`                   | `us-east-1`          | S3 region                             |
+| `CLIENT_ACCESS_KEY_ID` / `--client-access-key-id`         | *(required)*         | Client auth credentials               |
+| `CLIENT_SECRET_ACCESS_KEY` / `--client-secret-access-key` | *(required)*         | Client auth credentials               |
+| `CACHE_ENABLED` / `--cache-enabled`                       | `true`               | Enable/disable caching                |
+| `CACHE_DRY_RUN` / `--cache-dry-run`                       | `false`              | Dry-run verification mode (see below) |
+| `CACHE_SHARDS` / `--cache-shards`                         | `16`                 | Number of cache shards                |
+| `CACHE_MAX_ENTRIES` / `--cache-max-entries`               | `10000`              | Max cached objects                    |
+| `CACHE_MAX_SIZE_BYTES` / `--cache-max-size-bytes`         | `1073741824` (1 GiB) | Max cache size                        |
+| `CACHE_MAX_OBJECT_SIZE_BYTES` / `--cache-max-object-...`  | `10485760` (10 MiB)  | Skip caching above this               |
+| `CACHE_TTL_SECONDS` / `--cache-ttl-seconds`               | `86400` (24h)        | TTL for cached entries                |
+| `WORKER_THREADS` / `--worker-threads`                     | `4`                  | Tokio worker threads                  |
+| `OTEL_GRPC_ENDPOINT_URL` / `--otel-grpc-endpoint-url`     | *(optional)*         | OpenTelemetry collector               |
+| `PROMETHEUS_TEXTFILE_DIR` / `--prometheus-textfile-dir`   | *(optional)*         | Prometheus textfile collector dir     |
 
 ## Building
 
@@ -116,7 +117,7 @@ aws s3 cp s3://my-bucket/file.txt . --endpoint-url http://localhost:8080
 
 ## Dry-Run Verification Mode
 
-When `CACHE_DRYRUN=true`, the cache is fully operational (populated, checked, evicted) but `GetObject` always returns the fresh upstream response. On every cache hit, the cached object is compared against the freshly fetched one. If they differ, a warning event is emitted with the cache key fields (`bucket`, `key`, `range`, `version_id`) and a `cache.mismatch` metric is incremented. This allows deploying the cache in production to verify correctness before switching to serving cached responses.
+When `CACHE_DRY_RUN=true`, the cache is fully operational (populated, checked, evicted) but `GetObject` always returns the fresh upstream response. On every cache hit, the cached object is compared against the freshly fetched one. If they differ, a warning event is emitted with the cache key fields (`bucket`, `key`, `range`, `version_id`) and a `cache.mismatch` metric is incremented. This allows deploying the cache in production to verify correctness before switching to serving cached responses.
 
 ## Metrics
 
@@ -157,67 +158,4 @@ Run `--help` for all available flags:
 cargo run --release --bin s3_cache_sim --features sim -- --help
 ```
 
-### Scenarios
-
-**1. No cache (baseline)** — Bypass the cache entirely with `--no-cache` to establish a raw backend latency baseline. Compare against cached runs to measure the actual speedup.
-
-```bash
-cargo run --release --bin s3_cache_sim --features sim -- \
-  --no-cache
-```
-
-**2. Zipf baseline** — Realistic workload with moderate skew (s=1.0). Compare against scenario 1 to see the cache's effect.
-
-```bash
-cargo run --release --bin s3_cache_sim --features sim
-```
-
-**3. Heavy skew** — High Zipf exponent (s=1.5) concentrates requests on a small hot set, demonstrating near-optimal hit rates.
-
-```bash
-cargo run --release --bin s3_cache_sim --features sim -- \
-  --zipf-exponent 1.5
-```
-
-**4. Scan resistance** — Sequential scan over 10K objects. S3-FIFO should resist pollution, yielding ~0% hit rate (which is correct behavior — an LRU would thrash and waste memory).
-
-```bash
-cargo run --release --bin s3_cache_sim --features sim -- \
-  --pattern scan
-```
-
-**5. One-hit-wonders** — 30% of requests go to unique keys never seen again. Tests the cache's ability to avoid wasting capacity on transient objects.
-
-```bash
-cargo run --release --bin s3_cache_sim --features sim -- \
-  --one-hit-wonder-ratio 0.3
-```
-
-**6. Tiny cache under pressure** — Only 100 cache entries and 1MB budget. Measures how gracefully hit rate degrades when the cache is severely undersized.
-
-```bash
-cargo run --release --bin s3_cache_sim --features sim -- \
-  --cache-max-entries 100 --cache-max-size 1000000
-```
-
-**7. Size-constrained eviction** — Large objects (50KB-200KB) with the default 10MB cache budget. The byte limit kicks in well before the entry limit, forcing size-aware eviction.
-
-```bash
-cargo run --release --bin s3_cache_sim --features sim -- \
-  --min-object-size 50000 --max-object-size 200000
-```
-
-**8. Uniform random** — No access skew. With the cache holding 10% of the object set, hit rate reflects pure capacity ratio. Measures baseline behavior without a hot set.
-
-```bash
-cargo run --release --bin s3_cache_sim --features sim -- \
-  --pattern uniform
-```
-
-**9. High-latency backend** — Simulates a slow upstream (50ms RTT, 10MB/s throughput). Cache hits become dramatically faster than misses, making the latency p50/p99 split clearly visible. Uses fewer requests to keep runtime reasonable.
-
-```bash
-cargo run --release --bin s3_cache_sim --features sim -- \
-  --latency-ms 50 --throughput-bytes-per-sec 10000000 \
-  --num-requests 10000
-```
+See the corresponding [README.md](src/bin/s3_cache_sim/README.md) for more info.

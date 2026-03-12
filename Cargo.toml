@@ -82,7 +82,7 @@ tracing-subscriber = { version = "0.3", features = [
 http = "1"
 mock_instant = "0.6"
 testcontainers = "0.23"
-testcontainers-modules = { version = "0.11", features = ["minio"] }
+testcontainers-modules = { version = "0.12", features = ["minio"] }
 
 [features]
 mock-clock = ["dep:mock_instant"]

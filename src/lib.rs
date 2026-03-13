@@ -17,21 +17,22 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use aws_credential_types::Credentials;
-use hyper_util::{
-    rt::{TokioExecutor, TokioIo},
-    server::conn::auto::Builder as ConnBuilder,
-};
-use s3s::service::S3ServiceBuilder;
-use tokio::net::TcpListener;
-use tracing::{debug, error, info};
-use crate::health::HealthRoute;
 pub use self::config::Config;
 pub use self::error::ApplicationError;
 pub use self::fifo_cache::FifoCache;
 pub use self::proxy::{S3CachingProxy, range_to_string};
 pub use self::s3_cache::{CacheKey, CachedObject, S3Cache};
 pub use self::statistics::UniqueRequestedObjectsStatisticsTracker;
+use crate::service::S3CachingServiceProxy;
+use aws_credential_types::Credentials;
+use hyper_util::{
+    rt::{TokioExecutor, TokioIo},
+    server::conn::auto::Builder as ConnBuilder,
+};
+use reqwest::Url;
+use s3s::service::S3ServiceBuilder;
+use tokio::net::TcpListener;
+use tracing::{debug, error, info};
 
 mod auth;
 mod config;
@@ -40,9 +41,9 @@ mod fifo_cache;
 mod metrics_writer;
 mod proxy;
 mod s3_cache;
+mod service;
 mod statistics;
 mod telemetry;
-mod health;
 
 /// Result type alias using [`ApplicationError`] as the error type.
 pub type Result<T> = std::result::Result<T, ApplicationError>;
@@ -91,7 +92,7 @@ pub async fn start_app_with_shutdown<F>(
     addr_tx: tokio::sync::oneshot::Sender<std::net::SocketAddr>,
 ) -> Result<()>
 where
-    F: std::future::Future<Output = ()> + Send + 'static,
+    F: Future<Output = ()> + Send + 'static,
 {
     let (metrics_provider, logs_provider) = telemetry::initialize_telemetry(&config)?;
 
@@ -144,9 +145,12 @@ where
     // Build S3 service with auth, wrapped in a health check layer
     let service = {
         let mut b = S3ServiceBuilder::new(caching_proxy);
-        b.set_route(HealthRoute);
         b.set_auth(auth::create_auth(&config));
-        b.build()
+        let upstream_health_endpoint = Url::parse(&config.upstream_endpoint)
+            .unwrap()
+            .join("/minio/health/ready")
+            .unwrap();
+        S3CachingServiceProxy::new(b.build(), upstream_health_endpoint)
     };
 
     // Start Prometheus metrics writer if configured
@@ -195,7 +199,7 @@ where
 
         debug!("Accepted connection from {remote_addr}");
 
-        let conn = http_server.serve_connection(TokioIo::new(socket), service.clone());
+        let conn = http_server.serve_connection(TokioIo::new(socket), service);
         let conn = graceful.watch(conn.into_owned());
         tokio::spawn(async move {
             if let Err(err) = conn.await {

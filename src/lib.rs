@@ -25,7 +25,7 @@ use hyper_util::{
 use s3s::service::S3ServiceBuilder;
 use tokio::net::TcpListener;
 use tracing::{debug, error, info};
-
+use crate::health::HealthRoute;
 pub use self::config::Config;
 pub use self::error::ApplicationError;
 pub use self::fifo_cache::FifoCache;
@@ -40,9 +40,9 @@ mod fifo_cache;
 mod metrics_writer;
 mod proxy;
 mod s3_cache;
-mod service;
 mod statistics;
 mod telemetry;
+mod health;
 
 /// Result type alias using [`ApplicationError`] as the error type.
 pub type Result<T> = std::result::Result<T, ApplicationError>;
@@ -144,8 +144,9 @@ where
     // Build S3 service with auth, wrapped in a health check layer
     let service = {
         let mut b = S3ServiceBuilder::new(caching_proxy);
+        b.set_route(HealthRoute);
         b.set_auth(auth::create_auth(&config));
-        service::S3CachingServiceProxy::new(b.build())
+        b.build()
     };
 
     // Start Prometheus metrics writer if configured

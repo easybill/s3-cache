@@ -166,8 +166,7 @@ async fn invalidation_removes_all_ranges() {
     // Verify full entry invalidated
     assert_cache_missing(&cache, "test-bucket", "ranged.txt").await;
 
-    // Note: Range entries use different cache keys, but invalidate_object()
-    // in proxy_service.rs calls remove_matching which removes all variants
+    // Note: Range entries use different cache keys, but invalidate_object() calls remove_matching which removes all variants
 }
 
 #[tokio::test]

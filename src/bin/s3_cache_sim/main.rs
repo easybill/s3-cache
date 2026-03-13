@@ -11,7 +11,7 @@ use http::{HeaderMap, Method, Uri};
 use s3s::dto::*;
 use s3s::{S3, S3Request};
 
-use s3_cache::{CachingProxy, S3Cache};
+use s3_cache::{S3Cache, S3CachingProxy};
 
 use simulated_backend::SimulatedBackend;
 use tracing_subscriber::fmt::format::FmtSpan;
@@ -156,7 +156,7 @@ async fn main() {
         .await;
 
     // Build cache + proxy (or direct backend if --no-cache)
-    let proxy: Option<Arc<CachingProxy<_>>> = if args.no_cache {
+    let proxy: Option<Arc<S3CachingProxy<_>>> = if args.no_cache {
         None
     } else {
         let cache = Arc::new(S3Cache::new(
@@ -165,7 +165,7 @@ async fn main() {
             Duration::from_secs(args.cache_ttl_secs),
             args.cache_shards,
         ));
-        Some(Arc::new(CachingProxy::new(
+        Some(Arc::new(S3CachingProxy::new(
             backend.clone(),
             Some(cache),
             args.max_cacheable_size,

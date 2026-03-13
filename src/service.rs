@@ -8,9 +8,8 @@ use std::pin::Pin;
 
 type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
 
-/// Wraps an S3 service and short-circuits `GET /` and `GET /health` requests,
-/// returning `200 OK` with a plain-text `"Status OK"` body without forwarding
-/// them to the S3 layer or requiring authentication.
+/// Wraps an S3 service and short-circuits `GET /health` and `GET /upstream-health`
+/// requests without forwarding them to the S3 layer or requiring authentication.
 #[derive(Clone)]
 pub struct S3CachingServiceProxy<S> {
     inner: S,

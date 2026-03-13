@@ -40,6 +40,7 @@ mod fifo_cache;
 mod metrics_writer;
 mod proxy;
 mod s3_cache;
+mod service;
 mod statistics;
 mod telemetry;
 
@@ -140,11 +141,11 @@ where
         config.cache_dry_run,
     );
 
-    // Build S3 service with auth
+    // Build S3 service with auth, wrapped in a health check layer
     let service = {
         let mut b = S3ServiceBuilder::new(caching_proxy);
         b.set_auth(auth::create_auth(&config));
-        b.build()
+        service::S3CachingServiceProxy::new(b.build())
     };
 
     // Start Prometheus metrics writer if configured

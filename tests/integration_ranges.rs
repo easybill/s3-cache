@@ -3,8 +3,8 @@ mod common;
 use bytes::Bytes;
 use common::MockS3Backend;
 use common::helpers::*;
+use s3_cache::CachingProxy;
 use s3_cache::{CacheKey, range_to_string};
-use s3_cache::{CachingProxy, SharedCachingProxy};
 use s3s::S3;
 use s3s::dto::Range;
 
@@ -16,12 +16,7 @@ async fn range_requests_cached_separately() {
         .await;
 
     let cache = create_test_cache(100, 10_000_000, 300);
-    let proxy = SharedCachingProxy::new(CachingProxy::new(
-        backend.clone(),
-        Some(cache.clone()),
-        usize::MAX,
-        false,
-    ));
+    let proxy = CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
 
     // GET full object
     let req = build_get_request("test-bucket", "file.txt", None);
@@ -65,12 +60,7 @@ async fn overlapping_ranges_separate_cache() {
         .await;
 
     let cache = create_test_cache(100, 10_000_000, 300);
-    let proxy = SharedCachingProxy::new(CachingProxy::new(
-        backend.clone(),
-        Some(cache.clone()),
-        usize::MAX,
-        false,
-    ));
+    let proxy = CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
 
     // GET range 0-4
     let range1 = Range::Int {
@@ -119,12 +109,7 @@ async fn suffix_range_caching() {
         .await;
 
     let cache = create_test_cache(100, 10_000_000, 300);
-    let proxy = SharedCachingProxy::new(CachingProxy::new(
-        backend.clone(),
-        Some(cache.clone()),
-        usize::MAX,
-        false,
-    ));
+    let proxy = CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
 
     // GET last 5 bytes
     let range = Range::Suffix { length: 5 };
@@ -156,12 +141,7 @@ async fn range_invalidation_removes_all() {
         .await;
 
     let cache = create_test_cache(100, 10_000_000, 300);
-    let proxy = SharedCachingProxy::new(CachingProxy::new(
-        backend.clone(),
-        Some(cache.clone()),
-        usize::MAX,
-        false,
-    ));
+    let proxy = CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
 
     // GET full object
     let req = build_get_request("test-bucket", "multi-range.txt", None);
@@ -225,12 +205,7 @@ async fn full_request_does_not_populate_range_cache() {
         .await;
 
     let cache = create_test_cache(100, 10_000_000, 300);
-    let proxy = SharedCachingProxy::new(CachingProxy::new(
-        backend.clone(),
-        Some(cache.clone()),
-        usize::MAX,
-        false,
-    ));
+    let proxy = CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
 
     // GET full object
     let req = build_get_request("test-bucket", "file.txt", None);

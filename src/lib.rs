@@ -29,7 +29,7 @@ use tracing::{debug, error, info};
 pub use self::config::Config;
 pub use self::error::ApplicationError;
 pub use self::fifo_cache::FifoCache;
-pub use self::proxy_service::{CachingProxy, SharedCachingProxy, range_to_string};
+pub use self::proxy_service::{CachingProxy, range_to_string};
 pub use self::s3_cache::{CacheKey, CachedObject, S3Cache};
 pub use self::statistics::UniqueRequestedObjectsStatisticsTracker;
 
@@ -132,18 +132,17 @@ where
         ))
     });
 
-    // Build caching proxy (wrapped for sharing with metrics writer)
-    let caching_proxy =
-        proxy_service::SharedCachingProxy::new(proxy_service::CachingProxy::from_aws_proxy(
-            proxy,
-            cache,
-            config.cache_max_object_size_bytes,
-            config.cache_dry_run,
-        ));
+    // Build caching proxy
+    let caching_proxy = proxy_service::CachingProxy::from_aws_proxy(
+        proxy,
+        cache,
+        config.cache_max_object_size_bytes,
+        config.cache_dry_run,
+    );
 
     // Build S3 service with auth
     let service = {
-        let mut b = S3ServiceBuilder::new(caching_proxy.clone());
+        let mut b = S3ServiceBuilder::new(caching_proxy);
         b.set_auth(auth::create_auth(&config));
         b.build()
     };

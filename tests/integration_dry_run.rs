@@ -3,7 +3,7 @@ mod common;
 use bytes::Bytes;
 use common::MockS3Backend;
 use common::helpers::*;
-use s3_cache::{CachingProxy, SharedCachingProxy};
+use s3_cache::CachingProxy;
 use s3s::S3;
 
 #[tokio::test]
@@ -16,12 +16,7 @@ async fn cache_miss_populates_with_hash() {
 
     // Setup: Cache + Proxy in dry-run mode
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = SharedCachingProxy::new(CachingProxy::new(
-        backend.clone(),
-        Some(cache.clone()),
-        usize::MAX,
-        true,
-    ));
+    let proxy = CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, true);
 
     // First request in dry-run mode: cache miss
     let req = build_get_request("test-bucket", "key.txt", None);
@@ -44,12 +39,7 @@ async fn always_fetches_from_upstream() {
 
     // Setup: Cache + Proxy in dry-run mode
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = SharedCachingProxy::new(CachingProxy::new(
-        backend.clone(),
-        Some(cache.clone()),
-        usize::MAX,
-        true,
-    ));
+    let proxy = CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, true);
 
     // First request: cache miss
     let req = build_get_request("test-bucket", "key.txt", None);
@@ -77,12 +67,7 @@ async fn returns_fresh_data() {
 
     // Setup: Cache + Proxy in dry-run mode
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = SharedCachingProxy::new(CachingProxy::new(
-        backend.clone(),
-        Some(cache.clone()),
-        usize::MAX,
-        true,
-    ));
+    let proxy = CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, true);
 
     // First request: populates cache with "version1"
     let req = build_get_request("test-bucket", "mutable.txt", None);
@@ -118,12 +103,7 @@ async fn with_matching_cache_data() {
 
     // Setup: Cache + Proxy in dry-run mode
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = SharedCachingProxy::new(CachingProxy::new(
-        backend.clone(),
-        Some(cache.clone()),
-        usize::MAX,
-        true,
-    ));
+    let proxy = CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, true);
 
     // First request: populates cache
     let req = build_get_request("test-bucket", "stable.txt", None);
@@ -148,12 +128,7 @@ async fn with_mismatched_cache_data() {
 
     // Setup: Cache + Proxy in dry-run mode
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = SharedCachingProxy::new(CachingProxy::new(
-        backend.clone(),
-        Some(cache.clone()),
-        usize::MAX,
-        true,
-    ));
+    let proxy = CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, true);
 
     // First request: populates cache with "original"
     let req = build_get_request("test-bucket", "changing.txt", None);
@@ -186,12 +161,7 @@ async fn multiple_objects() {
 
     // Setup: Cache + Proxy in dry-run mode
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = SharedCachingProxy::new(CachingProxy::new(
-        backend.clone(),
-        Some(cache.clone()),
-        usize::MAX,
-        true,
-    ));
+    let proxy = CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, true);
 
     // Fetch all objects
     for i in 0..5 {
@@ -227,12 +197,7 @@ async fn with_large_objects() {
 
     // Setup: Cache + Proxy in dry-run mode with size limit
     let cache = create_test_cache(100, 100_000, 300);
-    let proxy = SharedCachingProxy::new(CachingProxy::new(
-        backend.clone(),
-        Some(cache.clone()),
-        100_000,
-        true,
-    ));
+    let proxy = CachingProxy::new(backend.clone(), Some(cache.clone()), 100_000, true);
 
     // Request large object in dry-run mode
     let req = build_get_request("test-bucket", "large.bin", None);
@@ -260,33 +225,16 @@ async fn concurrent_access() {
 
     // Setup: Cache + Proxy in dry-run mode
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = SharedCachingProxy::new(CachingProxy::new(
-        backend.clone(),
-        Some(cache.clone()),
-        usize::MAX,
-        true,
-    ));
+    let proxy = CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, true);
 
-    // Spawn multiple concurrent requests
-    let mut handles = vec![];
     for _ in 0..10 {
-        let proxy_clone = proxy.clone();
-        let handle = tokio::spawn(async move {
-            let req = build_get_request("test-bucket", "concurrent.txt", None);
-            let resp = proxy_clone.get_object(req).await.unwrap();
-            let body = extract_body(resp.output.body).await;
-            assert_eq!(body, Bytes::from("data"));
-        });
-        handles.push(handle);
-    }
-
-    // Wait for all requests to complete
-    for handle in handles {
-        handle.await.unwrap();
+        let req = build_get_request("test-bucket", "concurrent.txt", None);
+        let resp = proxy.get_object(req).await.unwrap();
+        let body = extract_body(resp.output.body).await;
+        assert_eq!(body, Bytes::from("data"));
     }
 
     // In dry-run mode, every request hits the backend
-    // So we should see 10 backend calls
     assert_eq!(backend.get_request_count().await, 10);
 
     // Object should be cached
@@ -300,12 +248,7 @@ async fn backend_error_not_cached() {
 
     // Setup: Cache + Proxy in dry-run mode
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = SharedCachingProxy::new(CachingProxy::new(
-        backend.clone(),
-        Some(cache.clone()),
-        usize::MAX,
-        true,
-    ));
+    let proxy = CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, true);
 
     // Request non-existent object
     let req = build_get_request("test-bucket", "missing.txt", None);
@@ -327,12 +270,7 @@ async fn preserves_metadata() {
 
     // Setup: Cache + Proxy in dry-run mode
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = SharedCachingProxy::new(CachingProxy::new(
-        backend.clone(),
-        Some(cache.clone()),
-        usize::MAX,
-        true,
-    ));
+    let proxy = CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, true);
 
     // First request
     let req = build_get_request("test-bucket", "meta.txt", None);

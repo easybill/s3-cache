@@ -3,7 +3,7 @@ mod common;
 use bytes::Bytes;
 use common::MockS3Backend;
 use common::helpers::*;
-use s3_cache::{CacheKey, CachingProxy};
+use s3_cache::{CacheKey, S3CachingProxy};
 use s3s::S3;
 
 #[tokio::test]
@@ -16,7 +16,7 @@ async fn get_object_cache_miss_then_hit() {
 
     // Setup: Cache + Proxy
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
+    let proxy = S3CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
 
     // First request: cache miss
     let req = build_get_request("test-bucket", "key.txt", None);
@@ -49,7 +49,7 @@ async fn cache_ttl_expiration() {
 
     // Cache with 60 second TTL
     let cache = create_test_cache(100, usize::MAX, 60);
-    let proxy = CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
+    let proxy = S3CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
 
     // First request: populate cache
     let req = build_get_request("test-bucket", "expiring.txt", None);
@@ -87,7 +87,7 @@ async fn cache_size_eviction() {
 
     // Cache with room for only 5 entries
     let cache = create_test_cache(5, usize::MAX, 300);
-    let proxy = CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
+    let proxy = S3CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
 
     // Fetch all 10 objects
     for i in 0..10 {
@@ -138,7 +138,7 @@ async fn cache_object_count_limit() {
 
     // Cache limited to 10 entries
     let cache = create_test_cache(10, usize::MAX, 300);
-    let proxy = CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
+    let proxy = S3CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
 
     // Fetch 15 objects
     for i in 0..15 {
@@ -183,7 +183,7 @@ async fn oversized_object_not_cached() {
 
     // Cache with max size 100KB
     let cache = create_test_cache(100, 100_000, 300);
-    let proxy = CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
+    let proxy = S3CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
 
     // First request: object too large, streams through without caching
     let req = build_get_request("test-bucket", "large.bin", None);
@@ -211,7 +211,7 @@ async fn concurrent_cache_access() {
         .await;
 
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
+    let proxy = S3CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
 
     for _ in 0..10 {
         let req = build_get_request("test-bucket", "concurrent.txt", None);
@@ -236,7 +236,7 @@ async fn different_buckets_separate_cache() {
         .await;
 
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
+    let proxy = S3CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
 
     // Fetch from both buckets
     let req = build_get_request("bucket-a", "key.txt", None);
@@ -270,7 +270,7 @@ async fn cache_byte_size_eviction() {
 
     // Cache with max_size of 2000 bytes (room for ~4 objects of 500 bytes)
     let cache = create_test_cache(100, 2000, 300);
-    let proxy = CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
+    let proxy = S3CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
 
     // Fetch all 10 objects
     for i in 0..10 {
@@ -306,7 +306,7 @@ async fn backend_error_not_cached() {
     // Don't add the object — backend will return NoSuchKey
 
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
+    let proxy = S3CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
 
     // Request non-existent object
     let req = build_get_request("test-bucket", "missing.txt", None);
@@ -333,7 +333,7 @@ async fn max_cacheable_size_rejects_large_objects() {
 
     // Proxy with max_cacheable_size = 1000 (rejects objects > 1KB)
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = CachingProxy::new(backend.clone(), Some(cache.clone()), 1000, false);
+    let proxy = S3CachingProxy::new(backend.clone(), Some(cache.clone()), 1000, false);
 
     // Small object: should be cached
     let req = build_get_request("test-bucket", "small.bin", None);
@@ -363,7 +363,7 @@ async fn cache_hit_preserves_metadata() {
         .await;
 
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
+    let proxy = S3CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
 
     // First request: cache miss
     let req = build_get_request("test-bucket", "meta.txt", None);
@@ -392,7 +392,7 @@ async fn head_object_does_not_populate_cache() {
         .await;
 
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
+    let proxy = S3CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
 
     // HEAD request — should be delegated, not cached
     let req = s3s::S3Request {
@@ -425,7 +425,7 @@ async fn put_then_get_sees_new_content() {
         .await;
 
     let cache = create_test_cache(100, usize::MAX, 300);
-    let proxy = CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
+    let proxy = S3CachingProxy::new(backend.clone(), Some(cache.clone()), usize::MAX, false);
 
     // GET: caches "version1"
     let req = build_get_request("test-bucket", "mutable.txt", None);

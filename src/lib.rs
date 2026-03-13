@@ -29,7 +29,7 @@ use tracing::{debug, error, info};
 pub use self::config::Config;
 pub use self::error::ApplicationError;
 pub use self::fifo_cache::FifoCache;
-pub use self::proxy::{CachingProxy, range_to_string};
+pub use self::proxy::{S3CachingProxy, range_to_string};
 pub use self::s3_cache::{CacheKey, CachedObject, S3Cache};
 pub use self::statistics::UniqueRequestedObjectsStatisticsTracker;
 
@@ -133,7 +133,7 @@ where
     });
 
     // Build caching proxy
-    let caching_proxy = CachingProxy::from_aws_proxy(
+    let caching_proxy = S3CachingProxy::from_aws_proxy(
         proxy,
         cache,
         config.cache_max_object_size_bytes,

@@ -18,7 +18,7 @@ use crate::telemetry;
 ///
 /// The type parameter `T` defaults to [`s3s_aws::Proxy`] but can be any type
 /// implementing the [`S3`] trait.
-pub struct CachingProxy<T = Proxy> {
+pub struct S3CachingProxy<T = Proxy> {
     inner: T,
     cache: Option<Arc<S3Cache>>,
     max_cacheable_size: usize,
@@ -31,7 +31,7 @@ pub struct CachingProxy<T = Proxy> {
     dry_run: bool,
 }
 
-impl<T> CachingProxy<T> {
+impl<T> S3CachingProxy<T> {
     /// Creates a new caching proxy wrapping an S3 implementation.
     ///
     /// Pass `None` for `cache` to disable caching (passthrough mode).
@@ -70,7 +70,7 @@ impl<T> CachingProxy<T> {
     }
 }
 
-impl CachingProxy<Proxy> {
+impl S3CachingProxy<Proxy> {
     /// Convenience constructor for wrapping [`s3s_aws::Proxy`].
     ///
     /// This is equivalent to calling [`new`](Self::new) with a [`Proxy`] type parameter.
@@ -110,7 +110,7 @@ pub fn range_to_string(range: &Range) -> String {
 }
 
 #[async_trait::async_trait]
-impl<T: S3 + Send + Sync> S3 for CachingProxy<T> {
+impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
     async fn get_object(
         &self,
         req: S3Request<GetObjectInput>,

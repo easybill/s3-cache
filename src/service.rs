@@ -1,5 +1,4 @@
-use bytes::Bytes;
-use http::StatusCode;
+use hyper::StatusCode;
 use hyper::service::Service;
 use hyper::{Method, Request, Response, body::Incoming};
 use reqwest::Url;
@@ -12,6 +11,7 @@ type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
 /// Wraps an S3 service and short-circuits `GET /` and `GET /health` requests,
 /// returning `200 OK` with a plain-text `"Status OK"` body without forwarding
 /// them to the S3 layer or requiring authentication.
+#[derive(Clone)]
 pub struct S3CachingServiceProxy<S> {
     inner: S,
     upstream_health_endpoint: Url,
@@ -40,8 +40,9 @@ where
             let response = Response::builder().status(200).body(Body::empty()).unwrap();
             Box::pin(std::future::ready(Ok(response)))
         } else if req.method() == Method::GET && req.uri().path() == "/upstream-health" {
-            let upstream_health_request_future = async {
-                let upstream_status = reqwest::get(self.upstream_health_endpoint.clone())
+            let upstream_health_endpoint = self.upstream_health_endpoint.clone();
+            let upstream_health_request_future = async move {
+                let upstream_status = reqwest::get(upstream_health_endpoint)
                     .await
                     .map(|res| res.status())
                     .unwrap_or_else(|e| {

@@ -5,7 +5,7 @@ use opentelemetry::KeyValue;
 use opentelemetry::metrics::{Counter, Gauge, Histogram};
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
 use opentelemetry_otlp::{Compression, WithExportConfig, WithTonicConfig};
-use prometheus::{HistogramOpts, IntCounter, IntGauge, Registry};
+use prometheus::{HistogramOpts, IntCounter, IntCounterVec, IntGauge, Opts, Registry};
 use tracing::{error, info};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -679,6 +679,35 @@ pub(crate) fn record_request_duration(data: RequestDuration) {
 
     PROM_REQUEST_DURATION_MS.observe(milliseconds);
     REQUEST_DURATION_MS.record(milliseconds, &attributes);
+}
+
+// MARK: - Endpoint Calls
+
+pub(crate) fn record_endpoint_call(method: &'static str) {
+    static ENDPOINT_TOTAL: LazyLock<Counter<u64>> = LazyLock::new(|| {
+        opentelemetry::global::meter(CARGO_CRATE_NAME)
+            .u64_counter("s3_cache.endpoint_call_total")
+            .with_description("Number of S3 endpoint method calls")
+            .build()
+    });
+
+    static PROM_ENDPOINT_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
+        let counter = IntCounterVec::new(
+            Opts::new(
+                "s3_cache_endpoint_call_total",
+                "Number of S3 endpoint method calls",
+            ),
+            &["rpc_method"],
+        )
+        .unwrap();
+        PROMETHEUS_REGISTRY
+            .register(Box::new(counter.clone()))
+            .unwrap();
+        counter
+    });
+
+    PROM_ENDPOINT_TOTAL.with_label_values(&[method]).inc();
+    ENDPOINT_TOTAL.add(1, &[KeyValue::new("rpc.method", method)]);
 }
 
 // MARK: Response Body Sizes

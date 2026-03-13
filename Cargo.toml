@@ -80,6 +80,8 @@ tracing-subscriber = { version = "0.3", features = [
 
 [dev-dependencies]
 http = "1"
+http-body-util = "0.1"
+hyper = { version = "1", features = ["client"] }
 mock_instant = "0.6"
 testcontainers = "0.27"
 testcontainers-modules = { version = "0.15", features = ["minio"] }

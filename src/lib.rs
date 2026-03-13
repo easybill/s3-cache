@@ -199,7 +199,7 @@ where
 
         debug!("Accepted connection from {remote_addr}");
 
-        let conn = http_server.serve_connection(TokioIo::new(socket), service);
+        let conn = http_server.serve_connection(TokioIo::new(socket), service.clone());
         let conn = graceful.watch(conn.into_owned());
         tokio::spawn(async move {
             if let Err(err) = conn.await {

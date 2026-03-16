@@ -171,9 +171,6 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
         &self,
         req: S3Request<GetObjectInput>,
     ) -> S3Result<S3Response<GetObjectOutput>> {
-        let start = Instant::now();
-        let method = req.method.to_string();
-        let scheme = req.uri.scheme_str().map(str::to_owned);
         let bucket = req.input.bucket.clone();
         let key = req.input.key.clone();
         let range = req.input.range;
@@ -200,20 +197,6 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
                         panic!("expected bytes, found hash");
                     };
 
-                    telemetry::record_server_request_duration(telemetry::RequestDuration {
-                        version: "1.1",
-                        method: method.clone(),
-                        scheme: scheme.clone(),
-                        status_code: Some(200),
-                        duration: start.elapsed(),
-                    });
-                    telemetry::record_response_body_size(telemetry::ResponseBodySize {
-                        version: "1.1",
-                        method: method.clone(),
-                        scheme: scheme.clone(),
-                        status_code: 200,
-                        size: cached.content_length() as u64,
-                    });
                     return Ok(S3Response::new(output));
                 }
 
@@ -238,13 +221,6 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
         let resp = result.map_err(|err| {
             error!(bucket = %bucket, key = %key, error = %err, "upstream error on get_object");
             telemetry::record_upstream_error();
-            telemetry::record_server_request_duration(telemetry::RequestDuration {
-                version: "1.1",
-                method: method.clone(),
-                scheme: scheme.clone(),
-                status_code: Some(502),
-                duration: start.elapsed(),
-            });
             err
         })?;
         let output = resp.output;
@@ -270,20 +246,6 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
             );
             telemetry::record_cache_oversized(content_length as u64);
             // Stream through without caching
-            telemetry::record_server_request_duration(telemetry::RequestDuration {
-                version: "1.1",
-                method: "GET".to_owned(),
-                scheme: None,
-                status_code: Some(200),
-                duration: start.elapsed(),
-            });
-            telemetry::record_response_body_size(telemetry::ResponseBodySize {
-                version: "1.1",
-                method: "GET".to_owned(),
-                scheme: None,
-                status_code: 200,
-                size: content_length as u64,
-            });
             return Ok(S3Response::new(output));
         }
 
@@ -291,13 +253,6 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
 
         // Try to buffer and cache the response body
         let Some(body_blob) = output.body else {
-            telemetry::record_server_request_duration(telemetry::RequestDuration {
-                version: "1.1",
-                method: "GET".to_owned(),
-                scheme: None,
-                status_code: Some(200),
-                duration: start.elapsed(),
-            });
             return Ok(S3Response::new(output));
         };
 
@@ -385,20 +340,7 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
                     storage_class: output.storage_class,
                     ..Default::default()
                 };
-                telemetry::record_server_request_duration(telemetry::RequestDuration {
-                    version: "1.1",
-                    method: method.clone(),
-                    scheme: scheme.clone(),
-                    status_code: Some(200),
-                    duration: start.elapsed(),
-                });
-                telemetry::record_response_body_size(telemetry::ResponseBodySize {
-                    version: "1.1",
-                    method: method.clone(),
-                    scheme: scheme.clone(),
-                    status_code: 200,
-                    size: content_length as u64,
-                });
+
                 Ok(S3Response::new(new_output))
             }
             Err(_) => {
@@ -411,13 +353,6 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
                 );
                 telemetry::record_buffering_error();
                 telemetry::record_cache_oversized(body_len as u64);
-                telemetry::record_server_request_duration(telemetry::RequestDuration {
-                    version: "1.1",
-                    method: method.clone(),
-                    scheme: scheme.clone(),
-                    status_code: Some(500),
-                    duration: start.elapsed(),
-                });
                 Err(s3_error!(
                     InternalError,
                     "Object exceeded size limit during buffering"

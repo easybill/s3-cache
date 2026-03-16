@@ -634,7 +634,7 @@ static REQUEST_DURATION_BUCKETS: LazyLock<Vec<f64>> = LazyLock::new(|| {
     ]
 });
 
-pub(crate) fn record_server_request_duration(data: RequestDuration) {
+pub(crate) fn record_server_request_duration(data: RequestDuration, op_name: &str) {
     static REQUEST_DURATION_MS: LazyLock<Histogram<f64>> = LazyLock::new(|| {
         opentelemetry::global::meter(CARGO_CRATE_NAME)
             .f64_histogram("http.server.request.duration")
@@ -644,13 +644,21 @@ pub(crate) fn record_server_request_duration(data: RequestDuration) {
             .build()
     });
 
-    static PROM_REQUEST_DURATION_MS: LazyLock<prometheus::Histogram> = LazyLock::new(|| {
-        let histogram = prometheus::Histogram::with_opts(
+    static PROM_REQUEST_DURATION_MS: LazyLock<prometheus::HistogramVec> = LazyLock::new(|| {
+        let histogram = prometheus::HistogramVec::new(
             HistogramOpts::new(
                 "http_server_request_duration",
                 "Duration of the request in milliseconds",
             )
             .buckets(REQUEST_DURATION_BUCKETS.to_vec()),
+            &[
+                "http_request_method",
+                "http_response_status_code",
+                "network_protocol_name",
+                "network_protocol_version",
+                "rpc_method",
+                "url_scheme",
+            ],
         )
         .unwrap();
         PROMETHEUS_REGISTRY
@@ -659,10 +667,21 @@ pub(crate) fn record_server_request_duration(data: RequestDuration) {
         histogram
     });
 
+    let http_request_method: String = data.method;
+    let http_response_status_code: String = data
+        .status_code
+        .map_or(String::default(), |status| status.to_string());
+    let network_protocol_name: String = "http".to_owned();
+    let network_protocol_version: String = data.version.to_owned();
+    let rpc_method: String = op_name.to_owned();
+    let url_scheme: String = data.scheme.unwrap_or_else(|| "http".to_owned());
+
     let mut attributes = vec![
-        KeyValue::new("network.protocol.version", data.version),
-        KeyValue::new("http.request.method", data.method),
-        KeyValue::new("network.protocol.name", "http"),
+        KeyValue::new("network.protocol.version", network_protocol_version.clone()),
+        KeyValue::new("http.request.method", http_request_method.clone()),
+        KeyValue::new("network.protocol.name", network_protocol_name.clone()),
+        KeyValue::new("rpc.method", rpc_method.clone()),
+        KeyValue::new("url.scheme", url_scheme.clone()),
     ];
 
     if let Some(status_code) = data.status_code {
@@ -672,18 +691,18 @@ pub(crate) fn record_server_request_duration(data: RequestDuration) {
         ));
     }
 
-    match data.scheme {
-        None => {
-            attributes.push(KeyValue::new("url.scheme", "http"));
-        }
-        Some(scheme) => {
-            attributes.push(KeyValue::new("url.scheme", scheme));
-        }
-    }
-
     let milliseconds = 1000.0 * data.duration.as_secs_f64();
 
-    PROM_REQUEST_DURATION_MS.observe(milliseconds);
+    PROM_REQUEST_DURATION_MS
+        .with_label_values(&[
+            http_request_method,
+            http_response_status_code,
+            network_protocol_name,
+            network_protocol_version,
+            rpc_method,
+            url_scheme,
+        ])
+        .observe(milliseconds);
     REQUEST_DURATION_MS.record(milliseconds, &attributes);
 }
 
@@ -710,6 +729,7 @@ pub(crate) fn record_client_request_duration(data: RequestDuration, op_name: &st
                 "network_protocol_name",
                 "network_protocol_version",
                 "rpc_method",
+                "url_scheme",
             ],
         )
         .unwrap();
@@ -765,14 +785,14 @@ pub(crate) struct ResponseBodySize {
     pub(crate) version: &'static str,
     pub(crate) method: String,
     pub(crate) scheme: Option<String>,
-    pub(crate) status_code: u16,
+    pub(crate) status_code: Option<u16>,
     pub(crate) size: u64,
 }
 
 static RESPONSE_BODY_SIZE_BUCKETS: LazyLock<Vec<f64>> =
     LazyLock::new(|| prometheus::exponential_buckets(1024.0, 4.0, 10).unwrap());
 
-pub(crate) fn record_response_body_size(data: ResponseBodySize) {
+pub(crate) fn record_server_response_body_size(data: ResponseBodySize, op_name: &str) {
     static RESPONSE_BODY_SIZE_BYTES: LazyLock<Histogram<f64>> = LazyLock::new(|| {
         opentelemetry::global::meter(CARGO_CRATE_NAME)
             .f64_histogram("http.server.response.body.size")
@@ -782,39 +802,65 @@ pub(crate) fn record_response_body_size(data: ResponseBodySize) {
             .build()
     });
 
-    static PROM_RESPONSE_BODY_SIZE_BYTES: LazyLock<prometheus::Histogram> = LazyLock::new(|| {
-        let histogram = prometheus::Histogram::with_opts(
-            HistogramOpts::new(
-                "http_server_response_body_size",
-                "Size of get_object response bodies in bytes",
+    static PROM_RESPONSE_BODY_SIZE_BYTES: LazyLock<prometheus::HistogramVec> =
+        LazyLock::new(|| {
+            let histogram = prometheus::HistogramVec::new(
+                HistogramOpts::new(
+                    "http_server_response_body_size",
+                    "Size of get_object response bodies in bytes",
+                )
+                .buckets(RESPONSE_BODY_SIZE_BUCKETS.to_vec()),
+                &[
+                    "http_request_method",
+                    "http_response_status_code",
+                    "network_protocol_name",
+                    "network_protocol_version",
+                    "rpc_method",
+                    "url_scheme",
+                ],
             )
-            .buckets(RESPONSE_BODY_SIZE_BUCKETS.to_vec()),
-        )
-        .unwrap();
-        PROMETHEUS_REGISTRY
-            .register(Box::new(histogram.clone()))
             .unwrap();
-        histogram
-    });
+            PROMETHEUS_REGISTRY
+                .register(Box::new(histogram.clone()))
+                .unwrap();
+            histogram
+        });
+
+    let http_request_method: String = data.method;
+    let http_response_status_code: String = data
+        .status_code
+        .map_or(String::default(), |status| status.to_string());
+    let network_protocol_name: String = "http".to_owned();
+    let network_protocol_version: String = data.version.to_owned();
+    let rpc_method: String = op_name.to_owned();
+    let url_scheme: String = data.scheme.unwrap_or_else(|| "http".to_owned());
 
     let mut attributes = vec![
-        KeyValue::new("network.protocol.version", data.version),
-        KeyValue::new("http.request.method", data.method),
-        KeyValue::new("network.protocol.name", "http"),
-        KeyValue::new("http.response.status_code", i64::from(data.status_code)),
+        KeyValue::new("network.protocol.version", network_protocol_version.clone()),
+        KeyValue::new("http.request.method", http_request_method.clone()),
+        KeyValue::new("network.protocol.name", network_protocol_name.clone()),
+        KeyValue::new("rpc.method", rpc_method.clone()),
+        KeyValue::new("url.scheme", url_scheme.clone()),
     ];
 
-    match data.scheme {
-        None => {
-            attributes.push(KeyValue::new("url.scheme", "http"));
-        }
-        Some(scheme) => {
-            attributes.push(KeyValue::new("url.scheme", scheme));
-        }
+    if let Some(status_code) = data.status_code {
+        attributes.push(KeyValue::new(
+            "http.response.status_code",
+            i64::from(status_code),
+        ));
     }
 
     let bytes = data.size as f64;
 
-    PROM_RESPONSE_BODY_SIZE_BYTES.observe(bytes);
+    PROM_RESPONSE_BODY_SIZE_BYTES
+        .with_label_values(&[
+            http_request_method,
+            http_response_status_code,
+            network_protocol_name,
+            network_protocol_version,
+            rpc_method,
+            url_scheme,
+        ])
+        .observe(bytes);
     RESPONSE_BODY_SIZE_BYTES.record(bytes, &attributes);
 }

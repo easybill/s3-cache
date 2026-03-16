@@ -17,13 +17,6 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-pub use self::config::Config;
-pub use self::error::ApplicationError;
-pub use self::fifo_cache::FifoCache;
-pub use self::proxy::{S3CachingProxy, range_to_string};
-pub use self::s3_cache::{CacheKey, CachedObject, S3Cache};
-pub use self::statistics::UniqueRequestedObjectsStatisticsTracker;
-use crate::service::S3CachingServiceProxy;
 use aws_credential_types::Credentials;
 use hyper_util::{
     rt::{TokioExecutor, TokioIo},
@@ -33,6 +26,15 @@ use reqwest::Url;
 use s3s::service::S3ServiceBuilder;
 use tokio::net::TcpListener;
 use tracing::{debug, error, info};
+
+use crate::service::S3CachingServiceProxy;
+
+pub use self::config::Config;
+pub use self::error::ApplicationError;
+pub use self::fifo_cache::FifoCache;
+pub use self::proxy::{S3CachingProxy, range_to_string};
+pub use self::s3_cache::{CacheKey, CachedObject, S3Cache};
+pub use self::statistics::UniqueRequestedObjectsStatisticsTracker;
 
 mod auth;
 mod config;

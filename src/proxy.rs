@@ -1,4 +1,5 @@
 use std::hash::{BuildHasher, RandomState};
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -9,7 +10,7 @@ use tracing::{debug, error, warn};
 
 use crate::s3_cache::{CacheKey, CachedObject, CachedObjectBody, S3Cache};
 use crate::statistics::UniqueRequestedObjectsStatisticsTracker;
-use crate::telemetry;
+use crate::telemetry::{self, RequestDuration};
 
 /// Generic caching proxy that wraps any S3 implementation.
 ///
@@ -109,6 +110,61 @@ pub fn range_to_string(range: &Range) -> String {
     }
 }
 
+macro_rules! make_client_request {
+    ($client:expr, $req:expr, $op_name:expr, $op_fn:ident) => {{
+        let client = $client;
+        let req = $req;
+        let op_name = $op_name;
+
+        let method = req.method.to_string();
+        let scheme = req.uri.scheme_str().map(str::to_owned);
+
+        let start = Instant::now();
+        let result: S3Result<S3Response<_>> = client.$op_fn(req).await;
+        let duration = start.elapsed();
+
+        let status_code: Option<u16> = match &result {
+            Ok(res) => res.status,
+            Err(err) => err.status_code(),
+        }
+        .map(|status| status.as_u16());
+
+        let data = RequestDuration {
+            version: "1.1",
+            method,
+            scheme,
+            status_code,
+            duration,
+        };
+
+        telemetry::record_client_request_duration(data, op_name);
+
+        result
+    }};
+}
+
+macro_rules! impl_s3_methods {
+    ($op_fn:ident => [$op_name:expr, $op_input:ident, $op_output:ident]) => {
+        // This function signature mirrors the expanded method signature
+        // as obtained from `#[async_trait::async_trait] impl ... { ... }`,
+        fn $op_fn<'life0, 'async_trait>(&'life0 self, req: S3Request<$op_input>) -> Pin<Box<dyn Future<Output = S3Result<S3Response<$op_output>>> + Send + 'async_trait>>
+        where
+            Self: 'async_trait,
+            'life0: 'async_trait,
+        {
+            Box::into_pin(Box::new(async move {
+                make_client_request!(&self.inner, req, $op_name, $op_fn)
+            }))
+        }
+    };
+
+    ( $($op_fn:ident => [$op_name:expr, $op_input:ident, $op_output:ident]),* $(,)? ) => {
+        $(
+            impl_s3_methods!($op_fn => [$op_name, $op_input, $op_output]);
+        )*
+    };
+}
+
 #[async_trait::async_trait]
 impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
     async fn get_object(
@@ -144,11 +200,11 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
                         panic!("expected bytes, found hash");
                     };
 
-                    telemetry::record_request_duration(telemetry::RequestDuration {
+                    telemetry::record_server_request_duration(telemetry::RequestDuration {
                         version: "1.1",
                         method: method.clone(),
                         scheme: scheme.clone(),
-                        status_code: 200,
+                        status_code: Some(200),
                         duration: start.elapsed(),
                     });
                     telemetry::record_response_body_size(telemetry::ResponseBodySize {
@@ -172,19 +228,21 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
         };
 
         // Forward to upstream — reconstruct request since we moved range out
-        let get_req = req.map_input(|mut input| {
+        let req = req.map_input(|mut input| {
             input.range = range;
             input
         });
 
-        let resp = self.inner.get_object(get_req).await.map_err(|err| {
+        let result = make_client_request!(&self.inner, req, "GetObject", get_object);
+
+        let resp = result.map_err(|err| {
             error!(bucket = %bucket, key = %key, error = %err, "upstream error on get_object");
             telemetry::record_upstream_error();
-            telemetry::record_request_duration(telemetry::RequestDuration {
+            telemetry::record_server_request_duration(telemetry::RequestDuration {
                 version: "1.1",
                 method: method.clone(),
                 scheme: scheme.clone(),
-                status_code: 502,
+                status_code: Some(502),
                 duration: start.elapsed(),
             });
             err
@@ -212,11 +270,11 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
             );
             telemetry::record_cache_oversized(content_length as u64);
             // Stream through without caching
-            telemetry::record_request_duration(telemetry::RequestDuration {
+            telemetry::record_server_request_duration(telemetry::RequestDuration {
                 version: "1.1",
                 method: "GET".to_owned(),
                 scheme: None,
-                status_code: 200,
+                status_code: Some(200),
                 duration: start.elapsed(),
             });
             telemetry::record_response_body_size(telemetry::ResponseBodySize {
@@ -233,11 +291,11 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
 
         // Try to buffer and cache the response body
         let Some(body_blob) = output.body else {
-            telemetry::record_request_duration(telemetry::RequestDuration {
+            telemetry::record_server_request_duration(telemetry::RequestDuration {
                 version: "1.1",
                 method: "GET".to_owned(),
                 scheme: None,
-                status_code: 200,
+                status_code: Some(200),
                 duration: start.elapsed(),
             });
             return Ok(S3Response::new(output));
@@ -327,11 +385,11 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
                     storage_class: output.storage_class,
                     ..Default::default()
                 };
-                telemetry::record_request_duration(telemetry::RequestDuration {
+                telemetry::record_server_request_duration(telemetry::RequestDuration {
                     version: "1.1",
                     method: method.clone(),
                     scheme: scheme.clone(),
-                    status_code: 200,
+                    status_code: Some(200),
                     duration: start.elapsed(),
                 });
                 telemetry::record_response_body_size(telemetry::ResponseBodySize {
@@ -353,11 +411,11 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
                 );
                 telemetry::record_buffering_error();
                 telemetry::record_cache_oversized(body_len as u64);
-                telemetry::record_request_duration(telemetry::RequestDuration {
+                telemetry::record_server_request_duration(telemetry::RequestDuration {
                     version: "1.1",
                     method: method.clone(),
                     scheme: scheme.clone(),
-                    status_code: 500,
+                    status_code: Some(500),
                     duration: start.elapsed(),
                 });
                 Err(s3_error!(
@@ -375,7 +433,9 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
         let bucket = req.input.bucket.clone();
         let key = req.input.key.clone();
 
-        let resp = self.inner.put_object(req).await.map_err(|err| {
+        let result = make_client_request!(&self.inner, req, "PutObject", put_object);
+
+        let resp = result.map_err(|err| {
             error!(bucket = %bucket, key = %key, error = %err, "upstream error on put_object");
             telemetry::record_upstream_error();
             err
@@ -403,7 +463,9 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
         let bucket = req.input.bucket.clone();
         let key = req.input.key.clone();
 
-        let resp = self.inner.delete_object(req).await.map_err(|err| {
+        let result = make_client_request!(&self.inner, req, "DeleteObject", delete_object);
+
+        let resp = result.map_err(|err| {
             error!(bucket = %bucket, key = %key, error = %err, "upstream error on delete_object");
             telemetry::record_upstream_error();
             err
@@ -437,7 +499,9 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
             .map(|o| o.key.clone())
             .collect();
 
-        let resp = self.inner.delete_objects(req).await.map_err(|err| {
+        let result = make_client_request!(&self.inner, req, "DeleteObjects", delete_objects);
+
+        let resp = result.map_err(|err| {
             error!(bucket = %bucket, error = %err, "upstream error on delete_objects");
             telemetry::record_upstream_error();
             err
@@ -467,7 +531,9 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
         let dest_bucket = req.input.bucket.clone();
         let dest_key = req.input.key.clone();
 
-        let resp = self.inner.copy_object(req).await.map_err(|err| {
+        let result = make_client_request!(&self.inner, req, "CopyObject", copy_object);
+
+        let resp = result.map_err(|err| {
             error!(bucket = %dest_bucket, key = %dest_key, error = %err, "upstream error on copy_object");
             telemetry::record_upstream_error();
             err
@@ -488,13 +554,6 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
         Ok(resp)
     }
 
-    async fn abort_multipart_upload(
-        &self,
-        req: S3Request<AbortMultipartUploadInput>,
-    ) -> S3Result<S3Response<AbortMultipartUploadOutput>> {
-        self.inner.abort_multipart_upload(req).await
-    }
-
     async fn complete_multipart_upload(
         &self,
         req: S3Request<CompleteMultipartUploadInput>,
@@ -502,7 +561,14 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
         let bucket = req.input.bucket.clone();
         let key = req.input.key.clone();
 
-        let resp = self.inner.complete_multipart_upload(req).await.map_err(|err| {
+        let result = make_client_request!(
+            &self.inner,
+            req,
+            "CompleteMultipartUpload",
+            complete_multipart_upload
+        );
+
+        let resp = result.map_err(|err| {
             error!(bucket = %bucket, key = %key, error = %err, "upstream error on complete_multipart_upload");
             telemetry::record_upstream_error();
             err
@@ -523,94 +589,20 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
         Ok(resp)
     }
 
-    async fn create_bucket(
-        &self,
-        req: S3Request<CreateBucketInput>,
-    ) -> S3Result<S3Response<CreateBucketOutput>> {
-        self.inner.create_bucket(req).await
-    }
-
-    async fn create_multipart_upload(
-        &self,
-        req: S3Request<CreateMultipartUploadInput>,
-    ) -> S3Result<S3Response<CreateMultipartUploadOutput>> {
-        self.inner.create_multipart_upload(req).await
-    }
-
-    async fn delete_bucket(
-        &self,
-        req: S3Request<DeleteBucketInput>,
-    ) -> S3Result<S3Response<DeleteBucketOutput>> {
-        self.inner.delete_bucket(req).await
-    }
-
-    async fn get_bucket_location(
-        &self,
-        req: S3Request<GetBucketLocationInput>,
-    ) -> S3Result<S3Response<GetBucketLocationOutput>> {
-        self.inner.get_bucket_location(req).await
-    }
-
-    async fn head_bucket(
-        &self,
-        req: S3Request<HeadBucketInput>,
-    ) -> S3Result<S3Response<HeadBucketOutput>> {
-        self.inner.head_bucket(req).await
-    }
-
-    async fn head_object(
-        &self,
-        req: S3Request<HeadObjectInput>,
-    ) -> S3Result<S3Response<HeadObjectOutput>> {
-        self.inner.head_object(req).await
-    }
-
-    async fn list_buckets(
-        &self,
-        req: S3Request<ListBucketsInput>,
-    ) -> S3Result<S3Response<ListBucketsOutput>> {
-        self.inner.list_buckets(req).await
-    }
-
-    async fn list_multipart_uploads(
-        &self,
-        req: S3Request<ListMultipartUploadsInput>,
-    ) -> S3Result<S3Response<ListMultipartUploadsOutput>> {
-        self.inner.list_multipart_uploads(req).await
-    }
-
-    async fn list_objects(
-        &self,
-        req: S3Request<ListObjectsInput>,
-    ) -> S3Result<S3Response<ListObjectsOutput>> {
-        self.inner.list_objects(req).await
-    }
-
-    async fn list_objects_v2(
-        &self,
-        req: S3Request<ListObjectsV2Input>,
-    ) -> S3Result<S3Response<ListObjectsV2Output>> {
-        self.inner.list_objects_v2(req).await
-    }
-
-    async fn list_parts(
-        &self,
-        req: S3Request<ListPartsInput>,
-    ) -> S3Result<S3Response<ListPartsOutput>> {
-        self.inner.list_parts(req).await
-    }
-
-    async fn upload_part(
-        &self,
-        req: S3Request<UploadPartInput>,
-    ) -> S3Result<S3Response<UploadPartOutput>> {
-        self.inner.upload_part(req).await
-    }
-
-    async fn upload_part_copy(
-        &self,
-        req: S3Request<UploadPartCopyInput>,
-    ) -> S3Result<S3Response<UploadPartCopyOutput>> {
-        self.inner.upload_part_copy(req).await
-    }
+    impl_s3_methods!(
+        abort_multipart_upload => ["AbortMultipartUpload", AbortMultipartUploadInput, AbortMultipartUploadOutput],
+        create_bucket => ["CreateBucket", CreateBucketInput, CreateBucketOutput],
+        create_multipart_upload => ["CreateMultipartUpload", CreateMultipartUploadInput, CreateMultipartUploadOutput],
+        delete_bucket => ["DeleteBucket", DeleteBucketInput, DeleteBucketOutput],
+        get_bucket_location => ["GetBucketLocation", GetBucketLocationInput, GetBucketLocationOutput],
+        head_bucket => ["HeadBucket", HeadBucketInput, HeadBucketOutput],
+        head_object => ["HeadObject", HeadObjectInput, HeadObjectOutput],
+        list_buckets => ["ListBuckets", ListBucketsInput, ListBucketsOutput],
+        list_multipart_uploads => ["ListMultipartUploads", ListMultipartUploadsInput, ListMultipartUploadsOutput],
+        list_objects => ["ListObjects", ListObjectsInput, ListObjectsOutput],
+        list_objects_v2 => ["ListObjectsV2", ListObjectsV2Input, ListObjectsV2Output],
+        list_parts => ["ListParts", ListPartsInput, ListPartsOutput],
+        upload_part => ["UploadPart", UploadPartInput, UploadPartOutput],
+        upload_part_copy => ["UploadPartCopy", UploadPartCopyInput, UploadPartCopyOutput],
+    );
 }

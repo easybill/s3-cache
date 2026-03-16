@@ -624,17 +624,17 @@ pub(crate) struct RequestDuration {
     pub(crate) version: &'static str,
     pub(crate) method: String,
     pub(crate) scheme: Option<String>,
-    pub(crate) status_code: u16,
+    pub(crate) status_code: Option<u16>,
     pub(crate) duration: Duration,
 }
 
-pub(crate) fn record_request_duration(data: RequestDuration) {
-    static REQUEST_DURATION_BUCKETS: LazyLock<Vec<f64>> = LazyLock::new(|| {
-        vec![
-            1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 2500.0, 5000.0, 10000.0,
-        ]
-    });
+static REQUEST_DURATION_BUCKETS: LazyLock<Vec<f64>> = LazyLock::new(|| {
+    vec![
+        1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 2500.0, 5000.0, 10000.0,
+    ]
+});
 
+pub(crate) fn record_server_request_duration(data: RequestDuration) {
     static REQUEST_DURATION_MS: LazyLock<Histogram<f64>> = LazyLock::new(|| {
         opentelemetry::global::meter(CARGO_CRATE_NAME)
             .f64_histogram("http.server.request.duration")
@@ -648,7 +648,7 @@ pub(crate) fn record_request_duration(data: RequestDuration) {
         let histogram = prometheus::Histogram::with_opts(
             HistogramOpts::new(
                 "http_server_request_duration",
-                "Duration of get_object requests in milliseconds",
+                "Duration of the request in milliseconds",
             )
             .buckets(REQUEST_DURATION_BUCKETS.to_vec()),
         )
@@ -663,8 +663,14 @@ pub(crate) fn record_request_duration(data: RequestDuration) {
         KeyValue::new("network.protocol.version", data.version),
         KeyValue::new("http.request.method", data.method),
         KeyValue::new("network.protocol.name", "http"),
-        KeyValue::new("http.response.status_code", i64::from(data.status_code)),
     ];
+
+    if let Some(status_code) = data.status_code {
+        attributes.push(KeyValue::new(
+            "http.response.status_code",
+            i64::from(status_code),
+        ));
+    }
 
     match data.scheme {
         None => {
@@ -681,6 +687,77 @@ pub(crate) fn record_request_duration(data: RequestDuration) {
     REQUEST_DURATION_MS.record(milliseconds, &attributes);
 }
 
+pub(crate) fn record_client_request_duration(data: RequestDuration, op_name: &str) {
+    static REQUEST_DURATION_MS: LazyLock<Histogram<f64>> = LazyLock::new(|| {
+        opentelemetry::global::meter(CARGO_CRATE_NAME)
+            .f64_histogram("http.client.request.duration")
+            .with_boundaries(REQUEST_DURATION_BUCKETS.to_vec())
+            .with_description("Duration of the request in milliseconds")
+            .with_unit("ms")
+            .build()
+    });
+
+    static PROM_REQUEST_DURATION_MS: LazyLock<prometheus::HistogramVec> = LazyLock::new(|| {
+        let histogram = prometheus::HistogramVec::new(
+            HistogramOpts::new(
+                "http_client_request_duration",
+                "Duration of the request in milliseconds",
+            )
+            .buckets(REQUEST_DURATION_BUCKETS.to_vec()),
+            &[
+                "http_request_method",
+                "http_response_status_code",
+                "network_protocol_name",
+                "network_protocol_version",
+                "rpc_method",
+            ],
+        )
+        .unwrap();
+        PROMETHEUS_REGISTRY
+            .register(Box::new(histogram.clone()))
+            .unwrap();
+        histogram
+    });
+
+    let http_request_method: String = data.method;
+    let http_response_status_code: String = data
+        .status_code
+        .map_or(String::default(), |status| status.to_string());
+    let network_protocol_name: String = "http".to_owned();
+    let network_protocol_version: String = data.version.to_owned();
+    let rpc_method: String = op_name.to_owned();
+    let url_scheme: String = data.scheme.unwrap_or_else(|| "http".to_owned());
+
+    let mut attributes = vec![
+        KeyValue::new("network.protocol.version", network_protocol_version.clone()),
+        KeyValue::new("http.request.method", http_request_method.clone()),
+        KeyValue::new("network.protocol.name", network_protocol_name.clone()),
+        KeyValue::new("rpc.method", rpc_method.clone()),
+        KeyValue::new("url.scheme", url_scheme.clone()),
+    ];
+
+    if let Some(status_code) = data.status_code {
+        attributes.push(KeyValue::new(
+            "http.response.status_code",
+            i64::from(status_code),
+        ));
+    }
+
+    let milliseconds = 1000.0 * data.duration.as_secs_f64();
+
+    PROM_REQUEST_DURATION_MS
+        .with_label_values(&[
+            http_request_method,
+            http_response_status_code,
+            network_protocol_name,
+            network_protocol_version,
+            rpc_method,
+            url_scheme,
+        ])
+        .observe(milliseconds);
+    REQUEST_DURATION_MS.record(milliseconds, &attributes);
+}
+
 // MARK: Response Body Sizes
 
 /// Attributes based on: https://opentelemetry.io/docs/specs/semconv/http/http-metrics/#http-server
@@ -692,10 +769,10 @@ pub(crate) struct ResponseBodySize {
     pub(crate) size: u64,
 }
 
-pub(crate) fn record_response_body_size(data: ResponseBodySize) {
-    static RESPONSE_BODY_SIZE_BUCKETS: LazyLock<Vec<f64>> =
-        LazyLock::new(|| prometheus::exponential_buckets(1024.0, 4.0, 10).unwrap());
+static RESPONSE_BODY_SIZE_BUCKETS: LazyLock<Vec<f64>> =
+    LazyLock::new(|| prometheus::exponential_buckets(1024.0, 4.0, 10).unwrap());
 
+pub(crate) fn record_response_body_size(data: ResponseBodySize) {
     static RESPONSE_BODY_SIZE_BYTES: LazyLock<Histogram<f64>> = LazyLock::new(|| {
         opentelemetry::global::meter(CARGO_CRATE_NAME)
             .f64_histogram("http.server.response.body.size")

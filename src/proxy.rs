@@ -115,7 +115,6 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
         &self,
         req: S3Request<GetObjectInput>,
     ) -> S3Result<S3Response<GetObjectOutput>> {
-        telemetry::record_endpoint_call("GetObject");
         let start = Instant::now();
         let method = req.method.to_string();
         let scheme = req.uri.scheme_str().map(str::to_owned);
@@ -373,7 +372,6 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
         &self,
         req: S3Request<PutObjectInput>,
     ) -> S3Result<S3Response<PutObjectOutput>> {
-        telemetry::record_endpoint_call("PutObject");
         let bucket = req.input.bucket.clone();
         let key = req.input.key.clone();
 
@@ -402,7 +400,6 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
         &self,
         req: S3Request<DeleteObjectInput>,
     ) -> S3Result<S3Response<DeleteObjectOutput>> {
-        telemetry::record_endpoint_call("DeleteObject");
         let bucket = req.input.bucket.clone();
         let key = req.input.key.clone();
 
@@ -431,7 +428,6 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
         &self,
         req: S3Request<DeleteObjectsInput>,
     ) -> S3Result<S3Response<DeleteObjectsOutput>> {
-        telemetry::record_endpoint_call("DeleteObjects");
         let bucket = req.input.bucket.clone();
         let keys: Vec<String> = req
             .input
@@ -468,7 +464,6 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
         &self,
         req: S3Request<CopyObjectInput>,
     ) -> S3Result<S3Response<CopyObjectOutput>> {
-        telemetry::record_endpoint_call("CopyObject");
         let dest_bucket = req.input.bucket.clone();
         let dest_key = req.input.key.clone();
 
@@ -497,7 +492,6 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
         &self,
         req: S3Request<AbortMultipartUploadInput>,
     ) -> S3Result<S3Response<AbortMultipartUploadOutput>> {
-        telemetry::record_endpoint_call("AbortMultipartUpload");
         self.inner.abort_multipart_upload(req).await
     }
 
@@ -505,7 +499,6 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
         &self,
         req: S3Request<CompleteMultipartUploadInput>,
     ) -> S3Result<S3Response<CompleteMultipartUploadOutput>> {
-        telemetry::record_endpoint_call("CompleteMultipartUpload");
         let bucket = req.input.bucket.clone();
         let key = req.input.key.clone();
 
@@ -534,7 +527,6 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
         &self,
         req: S3Request<CreateBucketInput>,
     ) -> S3Result<S3Response<CreateBucketOutput>> {
-        telemetry::record_endpoint_call("CreateBucket");
         self.inner.create_bucket(req).await
     }
 
@@ -542,7 +534,6 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
         &self,
         req: S3Request<CreateMultipartUploadInput>,
     ) -> S3Result<S3Response<CreateMultipartUploadOutput>> {
-        telemetry::record_endpoint_call("CreateMultipartUpload");
         self.inner.create_multipart_upload(req).await
     }
 
@@ -550,7 +541,6 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
         &self,
         req: S3Request<DeleteBucketInput>,
     ) -> S3Result<S3Response<DeleteBucketOutput>> {
-        telemetry::record_endpoint_call("DeleteBucket");
         self.inner.delete_bucket(req).await
     }
 
@@ -558,7 +548,6 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
         &self,
         req: S3Request<GetBucketLocationInput>,
     ) -> S3Result<S3Response<GetBucketLocationOutput>> {
-        telemetry::record_endpoint_call("GetBucketLocation");
         self.inner.get_bucket_location(req).await
     }
 
@@ -566,7 +555,6 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
         &self,
         req: S3Request<HeadBucketInput>,
     ) -> S3Result<S3Response<HeadBucketOutput>> {
-        telemetry::record_endpoint_call("HeadBucket");
         self.inner.head_bucket(req).await
     }
 
@@ -574,7 +562,6 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
         &self,
         req: S3Request<HeadObjectInput>,
     ) -> S3Result<S3Response<HeadObjectOutput>> {
-        telemetry::record_endpoint_call("HeadObject");
         self.inner.head_object(req).await
     }
 
@@ -582,7 +569,6 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
         &self,
         req: S3Request<ListBucketsInput>,
     ) -> S3Result<S3Response<ListBucketsOutput>> {
-        telemetry::record_endpoint_call("ListBuckets");
         self.inner.list_buckets(req).await
     }
 
@@ -590,7 +576,6 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
         &self,
         req: S3Request<ListMultipartUploadsInput>,
     ) -> S3Result<S3Response<ListMultipartUploadsOutput>> {
-        telemetry::record_endpoint_call("ListMultipartUploads");
         self.inner.list_multipart_uploads(req).await
     }
 
@@ -598,7 +583,6 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
         &self,
         req: S3Request<ListObjectsInput>,
     ) -> S3Result<S3Response<ListObjectsOutput>> {
-        telemetry::record_endpoint_call("ListObjects");
         self.inner.list_objects(req).await
     }
 
@@ -606,7 +590,6 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
         &self,
         req: S3Request<ListObjectsV2Input>,
     ) -> S3Result<S3Response<ListObjectsV2Output>> {
-        telemetry::record_endpoint_call("ListObjectsV2");
         self.inner.list_objects_v2(req).await
     }
 
@@ -614,7 +597,6 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
         &self,
         req: S3Request<ListPartsInput>,
     ) -> S3Result<S3Response<ListPartsOutput>> {
-        telemetry::record_endpoint_call("ListParts");
         self.inner.list_parts(req).await
     }
 
@@ -622,7 +604,6 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
         &self,
         req: S3Request<UploadPartInput>,
     ) -> S3Result<S3Response<UploadPartOutput>> {
-        telemetry::record_endpoint_call("UploadPart");
         self.inner.upload_part(req).await
     }
 
@@ -630,7 +611,6 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
         &self,
         req: S3Request<UploadPartCopyInput>,
     ) -> S3Result<S3Response<UploadPartCopyOutput>> {
-        telemetry::record_endpoint_call("UploadPartCopy");
         self.inner.upload_part_copy(req).await
     }
 }

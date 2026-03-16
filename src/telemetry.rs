@@ -683,7 +683,7 @@ pub(crate) fn record_request_duration(data: RequestDuration) {
 
 // MARK: - Endpoint Calls
 
-pub(crate) fn record_endpoint_call(method: &'static str) {
+pub(crate) fn record_endpoint_call(method: &str) {
     static ENDPOINT_TOTAL: LazyLock<Counter<u64>> = LazyLock::new(|| {
         opentelemetry::global::meter(CARGO_CRATE_NAME)
             .u64_counter("s3_cache.endpoint_call_total")
@@ -707,7 +707,7 @@ pub(crate) fn record_endpoint_call(method: &'static str) {
     });
 
     PROM_ENDPOINT_TOTAL.with_label_values(&[method]).inc();
-    ENDPOINT_TOTAL.add(1, &[KeyValue::new("rpc.method", method)]);
+    ENDPOINT_TOTAL.add(1, &[KeyValue::new("rpc.method", method.to_owned())]);
 }
 
 // MARK: Response Body Sizes

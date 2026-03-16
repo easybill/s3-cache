@@ -36,6 +36,7 @@ pub use self::proxy::{S3CachingProxy, range_to_string};
 pub use self::s3_cache::{CacheKey, CachedObject, S3Cache};
 pub use self::statistics::UniqueRequestedObjectsStatisticsTracker;
 
+mod access;
 mod auth;
 mod config;
 mod error;
@@ -148,6 +149,7 @@ where
     let service = {
         let mut b = S3ServiceBuilder::new(caching_proxy);
         b.set_auth(auth::create_auth(&config));
+        b.set_access(access::TelemetryAccess);
         let upstream_health_endpoint = Url::parse(&config.upstream_endpoint)
             .unwrap()
             .join("/minio/health/ready")

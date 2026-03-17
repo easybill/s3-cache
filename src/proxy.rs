@@ -524,20 +524,142 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
         Ok(resp)
     }
 
+    // MARK: - Bucket HEAD
     impl_s3_methods!(
-        abort_multipart_upload => ["AbortMultipartUpload", AbortMultipartUploadInput, AbortMultipartUploadOutput],
-        create_bucket => ["CreateBucket", CreateBucketInput, CreateBucketOutput],
-        create_multipart_upload => ["CreateMultipartUpload", CreateMultipartUploadInput, CreateMultipartUploadOutput],
-        delete_bucket => ["DeleteBucket", DeleteBucketInput, DeleteBucketOutput],
-        get_bucket_location => ["GetBucketLocation", GetBucketLocationInput, GetBucketLocationOutput],
         head_bucket => ["HeadBucket", HeadBucketInput, HeadBucketOutput],
-        head_object => ["HeadObject", HeadObjectInput, HeadObjectOutput],
+    );
+
+    // MARK: - Bucket List
+    impl_s3_methods!(
+        list_bucket_analytics_configurations => ["ListBucketAnalyticsConfigurations", ListBucketAnalyticsConfigurationsInput, ListBucketAnalyticsConfigurationsOutput],
+        list_bucket_intelligent_tiering_configurations => ["ListBucketIntelligentTieringConfigurations", ListBucketIntelligentTieringConfigurationsInput, ListBucketIntelligentTieringConfigurationsOutput],
+        list_bucket_inventory_configurations => ["ListBucketInventoryConfigurations", ListBucketInventoryConfigurationsInput, ListBucketInventoryConfigurationsOutput],
+        list_bucket_metrics_configurations => ["ListBucketMetricsConfigurations", ListBucketMetricsConfigurationsInput, ListBucketMetricsConfigurationsOutput],
         list_buckets => ["ListBuckets", ListBucketsInput, ListBucketsOutput],
         list_multipart_uploads => ["ListMultipartUploads", ListMultipartUploadsInput, ListMultipartUploadsOutput],
+        list_object_versions => ["ListObjectVersions", ListObjectVersionsInput, ListObjectVersionsOutput],
         list_objects => ["ListObjects", ListObjectsInput, ListObjectsOutput],
         list_objects_v2 => ["ListObjectsV2", ListObjectsV2Input, ListObjectsV2Output],
+    );
+
+    // MARK: - Bucket Create/Delete
+    impl_s3_methods!(
+        create_bucket => ["CreateBucket", CreateBucketInput, CreateBucketOutput],
+        create_bucket_metadata_table_configuration => ["CreateBucketMetadataTableConfiguration", CreateBucketMetadataTableConfigurationInput, CreateBucketMetadataTableConfigurationOutput],
+        delete_bucket => ["DeleteBucket", DeleteBucketInput, DeleteBucketOutput],
+        delete_bucket_metadata_table_configuration => ["DeleteBucketMetadataTableConfiguration", DeleteBucketMetadataTableConfigurationInput, DeleteBucketMetadataTableConfigurationOutput],
+    );
+
+    // MARK: - Bucket GET Config
+    impl_s3_methods!(
+        get_bucket_accelerate_configuration => ["GetBucketAccelerateConfiguration", GetBucketAccelerateConfigurationInput, GetBucketAccelerateConfigurationOutput],
+        get_bucket_acl => ["GetBucketAcl", GetBucketAclInput, GetBucketAclOutput],
+        get_bucket_analytics_configuration => ["GetBucketAnalyticsConfiguration", GetBucketAnalyticsConfigurationInput, GetBucketAnalyticsConfigurationOutput],
+        get_bucket_cors => ["GetBucketCors", GetBucketCorsInput, GetBucketCorsOutput],
+        get_bucket_encryption => ["GetBucketEncryption", GetBucketEncryptionInput, GetBucketEncryptionOutput],
+        get_bucket_intelligent_tiering_configuration => ["GetBucketIntelligentTieringConfiguration", GetBucketIntelligentTieringConfigurationInput, GetBucketIntelligentTieringConfigurationOutput],
+        get_bucket_inventory_configuration => ["GetBucketInventoryConfiguration", GetBucketInventoryConfigurationInput, GetBucketInventoryConfigurationOutput],
+        get_bucket_lifecycle_configuration => ["GetBucketLifecycleConfiguration", GetBucketLifecycleConfigurationInput, GetBucketLifecycleConfigurationOutput],
+        get_bucket_location => ["GetBucketLocation", GetBucketLocationInput, GetBucketLocationOutput],
+        get_bucket_logging => ["GetBucketLogging", GetBucketLoggingInput, GetBucketLoggingOutput],
+        get_bucket_metadata_table_configuration => ["GetBucketMetadataTableConfiguration", GetBucketMetadataTableConfigurationInput, GetBucketMetadataTableConfigurationOutput],
+        get_bucket_metrics_configuration => ["GetBucketMetricsConfiguration", GetBucketMetricsConfigurationInput, GetBucketMetricsConfigurationOutput],
+        get_bucket_notification_configuration => ["GetBucketNotificationConfiguration", GetBucketNotificationConfigurationInput, GetBucketNotificationConfigurationOutput],
+        get_bucket_ownership_controls => ["GetBucketOwnershipControls", GetBucketOwnershipControlsInput, GetBucketOwnershipControlsOutput],
+        get_bucket_policy => ["GetBucketPolicy", GetBucketPolicyInput, GetBucketPolicyOutput],
+        get_bucket_policy_status => ["GetBucketPolicyStatus", GetBucketPolicyStatusInput, GetBucketPolicyStatusOutput],
+        get_bucket_replication => ["GetBucketReplication", GetBucketReplicationInput, GetBucketReplicationOutput],
+        get_bucket_request_payment => ["GetBucketRequestPayment", GetBucketRequestPaymentInput, GetBucketRequestPaymentOutput],
+        get_bucket_tagging => ["GetBucketTagging", GetBucketTaggingInput, GetBucketTaggingOutput],
+        get_bucket_versioning => ["GetBucketVersioning", GetBucketVersioningInput, GetBucketVersioningOutput],
+        get_bucket_website => ["GetBucketWebsite", GetBucketWebsiteInput, GetBucketWebsiteOutput],
+        get_object_lock_configuration => ["GetObjectLockConfiguration", GetObjectLockConfigurationInput, GetObjectLockConfigurationOutput],
+        get_public_access_block => ["GetPublicAccessBlock", GetPublicAccessBlockInput, GetPublicAccessBlockOutput],
+    );
+
+    // MARK: - Bucket PUT Config
+    impl_s3_methods!(
+        put_bucket_accelerate_configuration => ["PutBucketAccelerateConfiguration", PutBucketAccelerateConfigurationInput, PutBucketAccelerateConfigurationOutput],
+        put_bucket_acl => ["PutBucketAcl", PutBucketAclInput, PutBucketAclOutput],
+        put_bucket_analytics_configuration => ["PutBucketAnalyticsConfiguration", PutBucketAnalyticsConfigurationInput, PutBucketAnalyticsConfigurationOutput],
+        put_bucket_cors => ["PutBucketCors", PutBucketCorsInput, PutBucketCorsOutput],
+        put_bucket_encryption => ["PutBucketEncryption", PutBucketEncryptionInput, PutBucketEncryptionOutput],
+        put_bucket_intelligent_tiering_configuration => ["PutBucketIntelligentTieringConfiguration", PutBucketIntelligentTieringConfigurationInput, PutBucketIntelligentTieringConfigurationOutput],
+        put_bucket_inventory_configuration => ["PutBucketInventoryConfiguration", PutBucketInventoryConfigurationInput, PutBucketInventoryConfigurationOutput],
+        put_bucket_lifecycle_configuration => ["PutBucketLifecycleConfiguration", PutBucketLifecycleConfigurationInput, PutBucketLifecycleConfigurationOutput],
+        put_bucket_logging => ["PutBucketLogging", PutBucketLoggingInput, PutBucketLoggingOutput],
+        put_bucket_metrics_configuration => ["PutBucketMetricsConfiguration", PutBucketMetricsConfigurationInput, PutBucketMetricsConfigurationOutput],
+        put_bucket_notification_configuration => ["PutBucketNotificationConfiguration", PutBucketNotificationConfigurationInput, PutBucketNotificationConfigurationOutput],
+        put_bucket_ownership_controls => ["PutBucketOwnershipControls", PutBucketOwnershipControlsInput, PutBucketOwnershipControlsOutput],
+        put_bucket_policy => ["PutBucketPolicy", PutBucketPolicyInput, PutBucketPolicyOutput],
+        put_bucket_replication => ["PutBucketReplication", PutBucketReplicationInput, PutBucketReplicationOutput],
+        put_bucket_request_payment => ["PutBucketRequestPayment", PutBucketRequestPaymentInput, PutBucketRequestPaymentOutput],
+        put_bucket_tagging => ["PutBucketTagging", PutBucketTaggingInput, PutBucketTaggingOutput],
+        put_bucket_versioning => ["PutBucketVersioning", PutBucketVersioningInput, PutBucketVersioningOutput],
+        put_bucket_website => ["PutBucketWebsite", PutBucketWebsiteInput, PutBucketWebsiteOutput],
+        put_object_lock_configuration => ["PutObjectLockConfiguration", PutObjectLockConfigurationInput, PutObjectLockConfigurationOutput],
+        put_public_access_block => ["PutPublicAccessBlock", PutPublicAccessBlockInput, PutPublicAccessBlockOutput],
+    );
+
+    // MARK: - Bucket DELETE Config
+    impl_s3_methods!(
+        delete_bucket_analytics_configuration => ["DeleteBucketAnalyticsConfiguration", DeleteBucketAnalyticsConfigurationInput, DeleteBucketAnalyticsConfigurationOutput],
+        delete_bucket_cors => ["DeleteBucketCors", DeleteBucketCorsInput, DeleteBucketCorsOutput],
+        delete_bucket_encryption => ["DeleteBucketEncryption", DeleteBucketEncryptionInput, DeleteBucketEncryptionOutput],
+        delete_bucket_intelligent_tiering_configuration => ["DeleteBucketIntelligentTieringConfiguration", DeleteBucketIntelligentTieringConfigurationInput, DeleteBucketIntelligentTieringConfigurationOutput],
+        delete_bucket_inventory_configuration => ["DeleteBucketInventoryConfiguration", DeleteBucketInventoryConfigurationInput, DeleteBucketInventoryConfigurationOutput],
+        delete_bucket_lifecycle => ["DeleteBucketLifecycle", DeleteBucketLifecycleInput, DeleteBucketLifecycleOutput],
+        delete_bucket_metrics_configuration => ["DeleteBucketMetricsConfiguration", DeleteBucketMetricsConfigurationInput, DeleteBucketMetricsConfigurationOutput],
+        delete_bucket_ownership_controls => ["DeleteBucketOwnershipControls", DeleteBucketOwnershipControlsInput, DeleteBucketOwnershipControlsOutput],
+        delete_bucket_policy => ["DeleteBucketPolicy", DeleteBucketPolicyInput, DeleteBucketPolicyOutput],
+        delete_bucket_replication => ["DeleteBucketReplication", DeleteBucketReplicationInput, DeleteBucketReplicationOutput],
+        delete_bucket_tagging => ["DeleteBucketTagging", DeleteBucketTaggingInput, DeleteBucketTaggingOutput],
+        delete_bucket_website => ["DeleteBucketWebsite", DeleteBucketWebsiteInput, DeleteBucketWebsiteOutput],
+        delete_public_access_block => ["DeletePublicAccessBlock", DeletePublicAccessBlockInput, DeletePublicAccessBlockOutput],
+    );
+
+    // MARK: - Object HEAD
+    impl_s3_methods!(
+        head_object => ["HeadObject", HeadObjectInput, HeadObjectOutput],
+    );
+
+    // MARK: - Object GET
+    impl_s3_methods!(
+        get_object_acl => ["GetObjectAcl", GetObjectAclInput, GetObjectAclOutput],
+        get_object_attributes => ["GetObjectAttributes", GetObjectAttributesInput, GetObjectAttributesOutput],
+        get_object_legal_hold => ["GetObjectLegalHold", GetObjectLegalHoldInput, GetObjectLegalHoldOutput],
+        get_object_retention => ["GetObjectRetention", GetObjectRetentionInput, GetObjectRetentionOutput],
+        get_object_tagging => ["GetObjectTagging", GetObjectTaggingInput, GetObjectTaggingOutput],
+        get_object_torrent => ["GetObjectTorrent", GetObjectTorrentInput, GetObjectTorrentOutput],
+    );
+
+    // MARK: - Object PUT
+    impl_s3_methods!(
+        put_object_acl => ["PutObjectAcl", PutObjectAclInput, PutObjectAclOutput],
+        put_object_legal_hold => ["PutObjectLegalHold", PutObjectLegalHoldInput, PutObjectLegalHoldOutput],
+        put_object_retention => ["PutObjectRetention", PutObjectRetentionInput, PutObjectRetentionOutput],
+        put_object_tagging => ["PutObjectTagging", PutObjectTaggingInput, PutObjectTaggingOutput],
+    );
+
+    // MARK: - Object DELETE
+    impl_s3_methods!(
+        delete_object_tagging => ["DeleteObjectTagging", DeleteObjectTaggingInput, DeleteObjectTaggingOutput],
+    );
+
+    // MARK: - Object Multipart
+    impl_s3_methods!(
+        abort_multipart_upload => ["AbortMultipartUpload", AbortMultipartUploadInput, AbortMultipartUploadOutput],
+        create_multipart_upload => ["CreateMultipartUpload", CreateMultipartUploadInput, CreateMultipartUploadOutput],
         list_parts => ["ListParts", ListPartsInput, ListPartsOutput],
         upload_part => ["UploadPart", UploadPartInput, UploadPartOutput],
         upload_part_copy => ["UploadPartCopy", UploadPartCopyInput, UploadPartCopyOutput],
+    );
+
+    // MARK: - Object Other
+    impl_s3_methods!(
+        post_object => ["PostObject", PostObjectInput, PostObjectOutput],
+        restore_object => ["RestoreObject", RestoreObjectInput, RestoreObjectOutput],
+        select_object_content => ["SelectObjectContent", SelectObjectContentInput, SelectObjectContentOutput],
+        write_get_object_response => ["WriteGetObjectResponse", WriteGetObjectResponseInput, WriteGetObjectResponseOutput],
     );
 }

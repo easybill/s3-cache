@@ -11,6 +11,13 @@ use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitEx
 
 use crate::{CARGO_CRATE_NAME, Config};
 
+static HOSTNAME: LazyLock<String> = LazyLock::new(|| {
+    std::env::vars()
+        .find(|(key, _)| key == "HOSTNAME")
+        .map(|(_, value)| value)
+        .unwrap_or_else(|| String::from("unknown"))
+});
+
 static RESOURCE: LazyLock<opentelemetry_sdk::Resource> = LazyLock::new(|| {
     opentelemetry_sdk::Resource::builder()
         .with_service_name("s3_cache")
@@ -344,7 +351,7 @@ pub(crate) fn record_cache_eviction_age(age_secs: f64) {
         LazyLock::new(|| {
             let histogram = prometheus::Histogram::with_opts(
                 HistogramOpts::new(
-                    "s3_cache_eviction_age_histogram",
+                    "s3_cache_eviction_age_histogram_seconds",
                     "Age of objects (in seconds) at the time of eviction, capped at TTL",
                 )
                 .buckets(EVICTION_AGE_BUCKETS.to_vec()),
@@ -492,84 +499,88 @@ pub(crate) fn record_cache_invalidation() {
     CACHE_INVALIDATION_TOTAL.add(1, &[]);
 }
 
-// MARK: Cache Mismatch
+// MARK: Service Errors
 
-pub(crate) fn record_cache_mismatch() {
-    static CACHE_MISMATCH_ERROR_TOTAL: LazyLock<Counter<u64>> = LazyLock::new(|| {
-        opentelemetry::global::meter(CARGO_CRATE_NAME)
-            .u64_counter("s3_cache.mismatch_error_total")
-            .with_description("Number of cache mismatches detected in dry-run mode")
-            .build()
-    });
+static SERVICE_ERROR: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    opentelemetry::global::meter(CARGO_CRATE_NAME)
+        .u64_counter("service.error")
+        .with_description("Internal errors the service can encounter")
+        .build()
+});
 
-    static PROM_CACHE_MISMATCH_ERROR_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
-        let counter = IntCounter::new(
-            "s3_cache_mismatch_error_total",
-            "Number of cache mismatches detected in dry-run mode",
-        )
+static PROM_SERVICE_ERROR: LazyLock<prometheus::IntCounterVec> = LazyLock::new(|| {
+    let counter = prometheus::IntCounterVec::new(
+        prometheus::Opts::new(
+            "service_error_total",
+            "Internal errors the service can encounter",
+        ),
+        &["error_type", "service", "component", "action", "host_name"],
+    )
+    .unwrap();
+    PROMETHEUS_REGISTRY
+        .register(Box::new(counter.clone()))
         .unwrap();
-        PROMETHEUS_REGISTRY
-            .register(Box::new(counter.clone()))
-            .unwrap();
-        counter
-    });
+    counter
+});
 
-    PROM_CACHE_MISMATCH_ERROR_TOTAL.inc();
-    CACHE_MISMATCH_ERROR_TOTAL.add(1, &[]);
+pub(crate) fn record_service_error(
+    error_type: &'static str,
+    component: &'static str,
+    action: &'static str,
+) {
+    let attributes = &[
+        KeyValue::new("error.type", error_type),
+        KeyValue::new("service", CARGO_CRATE_NAME),
+        KeyValue::new("component", component),
+        KeyValue::new("action", action),
+        KeyValue::new("host.name", HOSTNAME.clone()),
+    ];
+    SERVICE_ERROR.add(1, attributes);
+    PROM_SERVICE_ERROR
+        .with_label_values(&[error_type, CARGO_CRATE_NAME, component, action, &HOSTNAME])
+        .inc();
 }
 
 // MARK: Upstream Errors
 
-pub(crate) fn record_upstream_error() {
-    static UPSTREAM_ERROR: LazyLock<Counter<u64>> = LazyLock::new(|| {
-        opentelemetry::global::meter(CARGO_CRATE_NAME)
-            .u64_counter("s3_cache.upstream_error")
-            .with_description("Number of upstream S3 errors")
-            .build()
-    });
+static UPSTREAM_ERROR: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    opentelemetry::global::meter(CARGO_CRATE_NAME)
+        .u64_counter("upstream.error")
+        .with_description("Errors received from the upstream service")
+        .build()
+});
 
-    static PROM_UPSTREAM_ERROR: LazyLock<IntCounter> = LazyLock::new(|| {
-        let counter = IntCounter::new(
-            "s3_cache_upstream_error_total",
-            "Number of upstream S3 errors",
-        )
+static PROM_UPSTREAM_ERROR: LazyLock<prometheus::IntCounterVec> = LazyLock::new(|| {
+    let counter = prometheus::IntCounterVec::new(
+        prometheus::Opts::new(
+            "upstream_error_total",
+            "Errors received from the upstream service",
+        ),
+        &["error_type", "service", "component", "action", "host_name"],
+    )
+    .unwrap();
+    PROMETHEUS_REGISTRY
+        .register(Box::new(counter.clone()))
         .unwrap();
-        PROMETHEUS_REGISTRY
-            .register(Box::new(counter.clone()))
-            .unwrap();
-        counter
-    });
+    counter
+});
 
-    PROM_UPSTREAM_ERROR.inc();
-    UPSTREAM_ERROR.add(1, &[]);
-}
-
-// MARK: Buffering Errors
-
-pub(crate) fn record_buffering_error() {
-    static BUFFERING_ERROR: LazyLock<Counter<u64>> = LazyLock::new(|| {
-        opentelemetry::global::meter(CARGO_CRATE_NAME)
-            .u64_counter("s3_cache.buffering_error")
-            .with_description(
-                "Number of buffering errors (object exceeded size limit during streaming)",
-            )
-            .build()
-    });
-
-    static PROM_BUFFERING_ERROR: LazyLock<IntCounter> = LazyLock::new(|| {
-        let counter = IntCounter::new(
-            "s3_cache_buffering_error_total",
-            "Number of buffering errors (object exceeded size limit during streaming)",
-        )
-        .unwrap();
-        PROMETHEUS_REGISTRY
-            .register(Box::new(counter.clone()))
-            .unwrap();
-        counter
-    });
-
-    PROM_BUFFERING_ERROR.inc();
-    BUFFERING_ERROR.add(1, &[]);
+pub(crate) fn record_upstream_error(
+    error_type: &'static str,
+    component: &'static str,
+    action: &'static str,
+) {
+    let attributes = &[
+        KeyValue::new("error.type", error_type),
+        KeyValue::new("service", CARGO_CRATE_NAME),
+        KeyValue::new("component", component),
+        KeyValue::new("action", action),
+        KeyValue::new("host.name", HOSTNAME.clone()),
+    ];
+    UPSTREAM_ERROR.add(1, attributes);
+    PROM_UPSTREAM_ERROR
+        .with_label_values(&[error_type, CARGO_CRATE_NAME, component, action, &HOSTNAME])
+        .inc();
 }
 
 // MARK: Size Count
@@ -647,7 +658,7 @@ pub(crate) fn record_server_request_duration(data: RequestDuration, op_name: &st
     static PROM_REQUEST_DURATION_MS: LazyLock<prometheus::HistogramVec> = LazyLock::new(|| {
         let histogram = prometheus::HistogramVec::new(
             HistogramOpts::new(
-                "http_server_request_duration",
+                "http_server_request_duration_milliseconds",
                 "Duration of the request in milliseconds",
             )
             .buckets(REQUEST_DURATION_BUCKETS.to_vec()),
@@ -719,7 +730,7 @@ pub(crate) fn record_client_request_duration(data: RequestDuration, op_name: &st
     static PROM_REQUEST_DURATION_MS: LazyLock<prometheus::HistogramVec> = LazyLock::new(|| {
         let histogram = prometheus::HistogramVec::new(
             HistogramOpts::new(
-                "http_client_request_duration",
+                "http_client_request_duration_milliseconds",
                 "Duration of the request in milliseconds",
             )
             .buckets(REQUEST_DURATION_BUCKETS.to_vec()),
@@ -806,7 +817,7 @@ pub(crate) fn record_server_response_body_size(data: ResponseBodySize, op_name: 
         LazyLock::new(|| {
             let histogram = prometheus::HistogramVec::new(
                 HistogramOpts::new(
-                    "http_server_response_body_size",
+                    "http_server_response_body_size_bytes",
                     "Size of get_object response bodies in bytes",
                 )
                 .buckets(RESPONSE_BODY_SIZE_BUCKETS.to_vec()),

@@ -159,3 +159,17 @@ cargo run --release --bin s3_cache_sim --features sim -- --help
 ```
 
 See the corresponding [README.md](src/bin/s3_cache_sim/README.md) for more info.
+
+## Dev Environment
+
+```bash
+cd dev
+docker compose up --build
+```
+
+Starts MinIO, s3-cache, and a test-runner that generates sample traffic. See `dev/docker-compose.yml` for configuration.
+
+```bash
+docker compose exec s3-cache cat /metrics/s3_cache.prom
+docker compose down -v  # reset all state
+```

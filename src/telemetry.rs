@@ -344,7 +344,7 @@ pub(crate) fn record_cache_eviction_age(age_secs: f64) {
         LazyLock::new(|| {
             let histogram = prometheus::Histogram::with_opts(
                 HistogramOpts::new(
-                    "s3_cache_eviction_age_histogram",
+                    "s3_cache_eviction_age_histogram_seconds",
                     "Age of objects (in seconds) at the time of eviction, capped at TTL",
                 )
                 .buckets(EVICTION_AGE_BUCKETS.to_vec()),
@@ -596,7 +596,7 @@ pub(crate) fn record_server_request_duration(data: RequestDuration, op_name: &st
     static PROM_REQUEST_DURATION_MS: LazyLock<prometheus::HistogramVec> = LazyLock::new(|| {
         let histogram = prometheus::HistogramVec::new(
             HistogramOpts::new(
-                "http_server_request_duration",
+                "http_server_request_duration_milliseconds",
                 "Duration of the request in milliseconds",
             )
             .buckets(REQUEST_DURATION_BUCKETS.to_vec()),
@@ -668,7 +668,7 @@ pub(crate) fn record_client_request_duration(data: RequestDuration, op_name: &st
     static PROM_REQUEST_DURATION_MS: LazyLock<prometheus::HistogramVec> = LazyLock::new(|| {
         let histogram = prometheus::HistogramVec::new(
             HistogramOpts::new(
-                "http_client_request_duration",
+                "http_client_request_duration_milliseconds",
                 "Duration of the request in milliseconds",
             )
             .buckets(REQUEST_DURATION_BUCKETS.to_vec()),
@@ -755,7 +755,7 @@ pub(crate) fn record_server_response_body_size(data: ResponseBodySize, op_name: 
         LazyLock::new(|| {
             let histogram = prometheus::HistogramVec::new(
                 HistogramOpts::new(
-                    "http_server_response_body_size",
+                    "http_server_response_body_size_bytes",
                     "Size of get_object response bodies in bytes",
                 )
                 .buckets(RESPONSE_BODY_SIZE_BUCKETS.to_vec()),

@@ -1,4 +1,5 @@
 use std::hash::{BuildHasher, RandomState};
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -9,7 +10,7 @@ use tracing::{debug, error, warn};
 
 use crate::s3_cache::{CacheKey, CachedObject, CachedObjectBody, S3Cache};
 use crate::statistics::UniqueRequestedObjectsStatisticsTracker;
-use crate::telemetry;
+use crate::telemetry::{self, RequestDuration};
 
 /// Generic caching proxy that wraps any S3 implementation.
 ///
@@ -109,15 +110,67 @@ pub fn range_to_string(range: &Range) -> String {
     }
 }
 
+macro_rules! make_client_request {
+    ($client:expr, $req:expr, $op_name:expr, $op_fn:ident) => {{
+        let client = $client;
+        let req = $req;
+        let op_name = $op_name;
+
+        let method = req.method.to_string();
+        let scheme = req.uri.scheme_str().map(str::to_owned);
+
+        let start = Instant::now();
+        let result: S3Result<S3Response<_>> = client.$op_fn(req).await;
+        let duration = start.elapsed();
+
+        let status_code: Option<u16> = match &result {
+            Ok(res) => res.status,
+            Err(err) => err.status_code(),
+        }
+        .map(|status| status.as_u16());
+
+        let data = RequestDuration {
+            version: "1.1",
+            method,
+            scheme,
+            status_code,
+            duration,
+        };
+
+        telemetry::record_client_request_duration(data, op_name);
+
+        result
+    }};
+}
+
+macro_rules! impl_s3_methods {
+    ($op_fn:ident => [$op_name:expr, $op_input:ident, $op_output:ident]) => {
+        // This function signature mirrors the expanded method signature
+        // as obtained from `#[async_trait::async_trait] impl ... { ... }`,
+        fn $op_fn<'life0, 'async_trait>(&'life0 self, req: S3Request<$op_input>) -> Pin<Box<dyn Future<Output = S3Result<S3Response<$op_output>>> + Send + 'async_trait>>
+        where
+            Self: 'async_trait,
+            'life0: 'async_trait,
+        {
+            Box::into_pin(Box::new(async move {
+                make_client_request!(&self.inner, req, $op_name, $op_fn)
+            }))
+        }
+    };
+
+    ( $($op_fn:ident => [$op_name:expr, $op_input:ident, $op_output:ident]),* $(,)? ) => {
+        $(
+            impl_s3_methods!($op_fn => [$op_name, $op_input, $op_output]);
+        )*
+    };
+}
+
 #[async_trait::async_trait]
 impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
     async fn get_object(
         &self,
         req: S3Request<GetObjectInput>,
     ) -> S3Result<S3Response<GetObjectOutput>> {
-        let start = Instant::now();
-        let method = req.method.to_string();
-        let scheme = req.uri.scheme_str().map(str::to_owned);
         let bucket = req.input.bucket.clone();
         let key = req.input.key.clone();
         let range = req.input.range;
@@ -144,20 +197,6 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
                         panic!("expected bytes, found hash");
                     };
 
-                    telemetry::record_request_duration(telemetry::RequestDuration {
-                        version: "1.1",
-                        method: method.clone(),
-                        scheme: scheme.clone(),
-                        status_code: 200,
-                        duration: start.elapsed(),
-                    });
-                    telemetry::record_response_body_size(telemetry::ResponseBodySize {
-                        version: "1.1",
-                        method: method.clone(),
-                        scheme: scheme.clone(),
-                        status_code: 200,
-                        size: cached.content_length() as u64,
-                    });
                     return Ok(S3Response::new(output));
                 }
 
@@ -172,21 +211,16 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
         };
 
         // Forward to upstream — reconstruct request since we moved range out
-        let get_req = req.map_input(|mut input| {
+        let req = req.map_input(|mut input| {
             input.range = range;
             input
         });
 
-        let resp = self.inner.get_object(get_req).await.map_err(|err| {
+        let result = make_client_request!(&self.inner, req, "GetObject", get_object);
+
+        let resp = result.map_err(|err| {
             error!(bucket = %bucket, key = %key, error = %err, "upstream error on get_object");
             telemetry::record_upstream_error();
-            telemetry::record_request_duration(telemetry::RequestDuration {
-                version: "1.1",
-                method: method.clone(),
-                scheme: scheme.clone(),
-                status_code: 502,
-                duration: start.elapsed(),
-            });
             err
         })?;
         let output = resp.output;
@@ -212,20 +246,6 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
             );
             telemetry::record_cache_oversized(content_length as u64);
             // Stream through without caching
-            telemetry::record_request_duration(telemetry::RequestDuration {
-                version: "1.1",
-                method: "GET".to_owned(),
-                scheme: None,
-                status_code: 200,
-                duration: start.elapsed(),
-            });
-            telemetry::record_response_body_size(telemetry::ResponseBodySize {
-                version: "1.1",
-                method: "GET".to_owned(),
-                scheme: None,
-                status_code: 200,
-                size: content_length as u64,
-            });
             return Ok(S3Response::new(output));
         }
 
@@ -233,13 +253,6 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
 
         // Try to buffer and cache the response body
         let Some(body_blob) = output.body else {
-            telemetry::record_request_duration(telemetry::RequestDuration {
-                version: "1.1",
-                method: "GET".to_owned(),
-                scheme: None,
-                status_code: 200,
-                duration: start.elapsed(),
-            });
             return Ok(S3Response::new(output));
         };
 
@@ -327,20 +340,7 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
                     storage_class: output.storage_class,
                     ..Default::default()
                 };
-                telemetry::record_request_duration(telemetry::RequestDuration {
-                    version: "1.1",
-                    method: method.clone(),
-                    scheme: scheme.clone(),
-                    status_code: 200,
-                    duration: start.elapsed(),
-                });
-                telemetry::record_response_body_size(telemetry::ResponseBodySize {
-                    version: "1.1",
-                    method: method.clone(),
-                    scheme: scheme.clone(),
-                    status_code: 200,
-                    size: content_length as u64,
-                });
+
                 Ok(S3Response::new(new_output))
             }
             Err(_) => {
@@ -353,13 +353,6 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
                 );
                 telemetry::record_buffering_error();
                 telemetry::record_cache_oversized(body_len as u64);
-                telemetry::record_request_duration(telemetry::RequestDuration {
-                    version: "1.1",
-                    method: method.clone(),
-                    scheme: scheme.clone(),
-                    status_code: 500,
-                    duration: start.elapsed(),
-                });
                 Err(s3_error!(
                     InternalError,
                     "Object exceeded size limit during buffering"
@@ -375,7 +368,9 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
         let bucket = req.input.bucket.clone();
         let key = req.input.key.clone();
 
-        let resp = self.inner.put_object(req).await.map_err(|err| {
+        let result = make_client_request!(&self.inner, req, "PutObject", put_object);
+
+        let resp = result.map_err(|err| {
             error!(bucket = %bucket, key = %key, error = %err, "upstream error on put_object");
             telemetry::record_upstream_error();
             err
@@ -403,7 +398,9 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
         let bucket = req.input.bucket.clone();
         let key = req.input.key.clone();
 
-        let resp = self.inner.delete_object(req).await.map_err(|err| {
+        let result = make_client_request!(&self.inner, req, "DeleteObject", delete_object);
+
+        let resp = result.map_err(|err| {
             error!(bucket = %bucket, key = %key, error = %err, "upstream error on delete_object");
             telemetry::record_upstream_error();
             err
@@ -437,7 +434,9 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
             .map(|o| o.key.clone())
             .collect();
 
-        let resp = self.inner.delete_objects(req).await.map_err(|err| {
+        let result = make_client_request!(&self.inner, req, "DeleteObjects", delete_objects);
+
+        let resp = result.map_err(|err| {
             error!(bucket = %bucket, error = %err, "upstream error on delete_objects");
             telemetry::record_upstream_error();
             err
@@ -467,7 +466,9 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
         let dest_bucket = req.input.bucket.clone();
         let dest_key = req.input.key.clone();
 
-        let resp = self.inner.copy_object(req).await.map_err(|err| {
+        let result = make_client_request!(&self.inner, req, "CopyObject", copy_object);
+
+        let resp = result.map_err(|err| {
             error!(bucket = %dest_bucket, key = %dest_key, error = %err, "upstream error on copy_object");
             telemetry::record_upstream_error();
             err
@@ -488,13 +489,6 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
         Ok(resp)
     }
 
-    async fn abort_multipart_upload(
-        &self,
-        req: S3Request<AbortMultipartUploadInput>,
-    ) -> S3Result<S3Response<AbortMultipartUploadOutput>> {
-        self.inner.abort_multipart_upload(req).await
-    }
-
     async fn complete_multipart_upload(
         &self,
         req: S3Request<CompleteMultipartUploadInput>,
@@ -502,7 +496,14 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
         let bucket = req.input.bucket.clone();
         let key = req.input.key.clone();
 
-        let resp = self.inner.complete_multipart_upload(req).await.map_err(|err| {
+        let result = make_client_request!(
+            &self.inner,
+            req,
+            "CompleteMultipartUpload",
+            complete_multipart_upload
+        );
+
+        let resp = result.map_err(|err| {
             error!(bucket = %bucket, key = %key, error = %err, "upstream error on complete_multipart_upload");
             telemetry::record_upstream_error();
             err
@@ -523,94 +524,142 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
         Ok(resp)
     }
 
-    async fn create_bucket(
-        &self,
-        req: S3Request<CreateBucketInput>,
-    ) -> S3Result<S3Response<CreateBucketOutput>> {
-        self.inner.create_bucket(req).await
-    }
+    // MARK: - Bucket HEAD
+    impl_s3_methods!(
+        head_bucket => ["HeadBucket", HeadBucketInput, HeadBucketOutput],
+    );
 
-    async fn create_multipart_upload(
-        &self,
-        req: S3Request<CreateMultipartUploadInput>,
-    ) -> S3Result<S3Response<CreateMultipartUploadOutput>> {
-        self.inner.create_multipart_upload(req).await
-    }
+    // MARK: - Bucket List
+    impl_s3_methods!(
+        list_bucket_analytics_configurations => ["ListBucketAnalyticsConfigurations", ListBucketAnalyticsConfigurationsInput, ListBucketAnalyticsConfigurationsOutput],
+        list_bucket_intelligent_tiering_configurations => ["ListBucketIntelligentTieringConfigurations", ListBucketIntelligentTieringConfigurationsInput, ListBucketIntelligentTieringConfigurationsOutput],
+        list_bucket_inventory_configurations => ["ListBucketInventoryConfigurations", ListBucketInventoryConfigurationsInput, ListBucketInventoryConfigurationsOutput],
+        list_bucket_metrics_configurations => ["ListBucketMetricsConfigurations", ListBucketMetricsConfigurationsInput, ListBucketMetricsConfigurationsOutput],
+        list_buckets => ["ListBuckets", ListBucketsInput, ListBucketsOutput],
+        list_multipart_uploads => ["ListMultipartUploads", ListMultipartUploadsInput, ListMultipartUploadsOutput],
+        list_object_versions => ["ListObjectVersions", ListObjectVersionsInput, ListObjectVersionsOutput],
+        list_objects => ["ListObjects", ListObjectsInput, ListObjectsOutput],
+        list_objects_v2 => ["ListObjectsV2", ListObjectsV2Input, ListObjectsV2Output],
+    );
 
-    async fn delete_bucket(
-        &self,
-        req: S3Request<DeleteBucketInput>,
-    ) -> S3Result<S3Response<DeleteBucketOutput>> {
-        self.inner.delete_bucket(req).await
-    }
+    // MARK: - Bucket Create/Delete
+    impl_s3_methods!(
+        create_bucket => ["CreateBucket", CreateBucketInput, CreateBucketOutput],
+        create_bucket_metadata_table_configuration => ["CreateBucketMetadataTableConfiguration", CreateBucketMetadataTableConfigurationInput, CreateBucketMetadataTableConfigurationOutput],
+        delete_bucket => ["DeleteBucket", DeleteBucketInput, DeleteBucketOutput],
+        delete_bucket_metadata_table_configuration => ["DeleteBucketMetadataTableConfiguration", DeleteBucketMetadataTableConfigurationInput, DeleteBucketMetadataTableConfigurationOutput],
+    );
 
-    async fn get_bucket_location(
-        &self,
-        req: S3Request<GetBucketLocationInput>,
-    ) -> S3Result<S3Response<GetBucketLocationOutput>> {
-        self.inner.get_bucket_location(req).await
-    }
+    // MARK: - Bucket GET Config
+    impl_s3_methods!(
+        get_bucket_accelerate_configuration => ["GetBucketAccelerateConfiguration", GetBucketAccelerateConfigurationInput, GetBucketAccelerateConfigurationOutput],
+        get_bucket_acl => ["GetBucketAcl", GetBucketAclInput, GetBucketAclOutput],
+        get_bucket_analytics_configuration => ["GetBucketAnalyticsConfiguration", GetBucketAnalyticsConfigurationInput, GetBucketAnalyticsConfigurationOutput],
+        get_bucket_cors => ["GetBucketCors", GetBucketCorsInput, GetBucketCorsOutput],
+        get_bucket_encryption => ["GetBucketEncryption", GetBucketEncryptionInput, GetBucketEncryptionOutput],
+        get_bucket_intelligent_tiering_configuration => ["GetBucketIntelligentTieringConfiguration", GetBucketIntelligentTieringConfigurationInput, GetBucketIntelligentTieringConfigurationOutput],
+        get_bucket_inventory_configuration => ["GetBucketInventoryConfiguration", GetBucketInventoryConfigurationInput, GetBucketInventoryConfigurationOutput],
+        get_bucket_lifecycle_configuration => ["GetBucketLifecycleConfiguration", GetBucketLifecycleConfigurationInput, GetBucketLifecycleConfigurationOutput],
+        get_bucket_location => ["GetBucketLocation", GetBucketLocationInput, GetBucketLocationOutput],
+        get_bucket_logging => ["GetBucketLogging", GetBucketLoggingInput, GetBucketLoggingOutput],
+        get_bucket_metadata_table_configuration => ["GetBucketMetadataTableConfiguration", GetBucketMetadataTableConfigurationInput, GetBucketMetadataTableConfigurationOutput],
+        get_bucket_metrics_configuration => ["GetBucketMetricsConfiguration", GetBucketMetricsConfigurationInput, GetBucketMetricsConfigurationOutput],
+        get_bucket_notification_configuration => ["GetBucketNotificationConfiguration", GetBucketNotificationConfigurationInput, GetBucketNotificationConfigurationOutput],
+        get_bucket_ownership_controls => ["GetBucketOwnershipControls", GetBucketOwnershipControlsInput, GetBucketOwnershipControlsOutput],
+        get_bucket_policy => ["GetBucketPolicy", GetBucketPolicyInput, GetBucketPolicyOutput],
+        get_bucket_policy_status => ["GetBucketPolicyStatus", GetBucketPolicyStatusInput, GetBucketPolicyStatusOutput],
+        get_bucket_replication => ["GetBucketReplication", GetBucketReplicationInput, GetBucketReplicationOutput],
+        get_bucket_request_payment => ["GetBucketRequestPayment", GetBucketRequestPaymentInput, GetBucketRequestPaymentOutput],
+        get_bucket_tagging => ["GetBucketTagging", GetBucketTaggingInput, GetBucketTaggingOutput],
+        get_bucket_versioning => ["GetBucketVersioning", GetBucketVersioningInput, GetBucketVersioningOutput],
+        get_bucket_website => ["GetBucketWebsite", GetBucketWebsiteInput, GetBucketWebsiteOutput],
+        get_object_lock_configuration => ["GetObjectLockConfiguration", GetObjectLockConfigurationInput, GetObjectLockConfigurationOutput],
+        get_public_access_block => ["GetPublicAccessBlock", GetPublicAccessBlockInput, GetPublicAccessBlockOutput],
+    );
 
-    async fn head_bucket(
-        &self,
-        req: S3Request<HeadBucketInput>,
-    ) -> S3Result<S3Response<HeadBucketOutput>> {
-        self.inner.head_bucket(req).await
-    }
+    // MARK: - Bucket PUT Config
+    impl_s3_methods!(
+        put_bucket_accelerate_configuration => ["PutBucketAccelerateConfiguration", PutBucketAccelerateConfigurationInput, PutBucketAccelerateConfigurationOutput],
+        put_bucket_acl => ["PutBucketAcl", PutBucketAclInput, PutBucketAclOutput],
+        put_bucket_analytics_configuration => ["PutBucketAnalyticsConfiguration", PutBucketAnalyticsConfigurationInput, PutBucketAnalyticsConfigurationOutput],
+        put_bucket_cors => ["PutBucketCors", PutBucketCorsInput, PutBucketCorsOutput],
+        put_bucket_encryption => ["PutBucketEncryption", PutBucketEncryptionInput, PutBucketEncryptionOutput],
+        put_bucket_intelligent_tiering_configuration => ["PutBucketIntelligentTieringConfiguration", PutBucketIntelligentTieringConfigurationInput, PutBucketIntelligentTieringConfigurationOutput],
+        put_bucket_inventory_configuration => ["PutBucketInventoryConfiguration", PutBucketInventoryConfigurationInput, PutBucketInventoryConfigurationOutput],
+        put_bucket_lifecycle_configuration => ["PutBucketLifecycleConfiguration", PutBucketLifecycleConfigurationInput, PutBucketLifecycleConfigurationOutput],
+        put_bucket_logging => ["PutBucketLogging", PutBucketLoggingInput, PutBucketLoggingOutput],
+        put_bucket_metrics_configuration => ["PutBucketMetricsConfiguration", PutBucketMetricsConfigurationInput, PutBucketMetricsConfigurationOutput],
+        put_bucket_notification_configuration => ["PutBucketNotificationConfiguration", PutBucketNotificationConfigurationInput, PutBucketNotificationConfigurationOutput],
+        put_bucket_ownership_controls => ["PutBucketOwnershipControls", PutBucketOwnershipControlsInput, PutBucketOwnershipControlsOutput],
+        put_bucket_policy => ["PutBucketPolicy", PutBucketPolicyInput, PutBucketPolicyOutput],
+        put_bucket_replication => ["PutBucketReplication", PutBucketReplicationInput, PutBucketReplicationOutput],
+        put_bucket_request_payment => ["PutBucketRequestPayment", PutBucketRequestPaymentInput, PutBucketRequestPaymentOutput],
+        put_bucket_tagging => ["PutBucketTagging", PutBucketTaggingInput, PutBucketTaggingOutput],
+        put_bucket_versioning => ["PutBucketVersioning", PutBucketVersioningInput, PutBucketVersioningOutput],
+        put_bucket_website => ["PutBucketWebsite", PutBucketWebsiteInput, PutBucketWebsiteOutput],
+        put_object_lock_configuration => ["PutObjectLockConfiguration", PutObjectLockConfigurationInput, PutObjectLockConfigurationOutput],
+        put_public_access_block => ["PutPublicAccessBlock", PutPublicAccessBlockInput, PutPublicAccessBlockOutput],
+    );
 
-    async fn head_object(
-        &self,
-        req: S3Request<HeadObjectInput>,
-    ) -> S3Result<S3Response<HeadObjectOutput>> {
-        self.inner.head_object(req).await
-    }
+    // MARK: - Bucket DELETE Config
+    impl_s3_methods!(
+        delete_bucket_analytics_configuration => ["DeleteBucketAnalyticsConfiguration", DeleteBucketAnalyticsConfigurationInput, DeleteBucketAnalyticsConfigurationOutput],
+        delete_bucket_cors => ["DeleteBucketCors", DeleteBucketCorsInput, DeleteBucketCorsOutput],
+        delete_bucket_encryption => ["DeleteBucketEncryption", DeleteBucketEncryptionInput, DeleteBucketEncryptionOutput],
+        delete_bucket_intelligent_tiering_configuration => ["DeleteBucketIntelligentTieringConfiguration", DeleteBucketIntelligentTieringConfigurationInput, DeleteBucketIntelligentTieringConfigurationOutput],
+        delete_bucket_inventory_configuration => ["DeleteBucketInventoryConfiguration", DeleteBucketInventoryConfigurationInput, DeleteBucketInventoryConfigurationOutput],
+        delete_bucket_lifecycle => ["DeleteBucketLifecycle", DeleteBucketLifecycleInput, DeleteBucketLifecycleOutput],
+        delete_bucket_metrics_configuration => ["DeleteBucketMetricsConfiguration", DeleteBucketMetricsConfigurationInput, DeleteBucketMetricsConfigurationOutput],
+        delete_bucket_ownership_controls => ["DeleteBucketOwnershipControls", DeleteBucketOwnershipControlsInput, DeleteBucketOwnershipControlsOutput],
+        delete_bucket_policy => ["DeleteBucketPolicy", DeleteBucketPolicyInput, DeleteBucketPolicyOutput],
+        delete_bucket_replication => ["DeleteBucketReplication", DeleteBucketReplicationInput, DeleteBucketReplicationOutput],
+        delete_bucket_tagging => ["DeleteBucketTagging", DeleteBucketTaggingInput, DeleteBucketTaggingOutput],
+        delete_bucket_website => ["DeleteBucketWebsite", DeleteBucketWebsiteInput, DeleteBucketWebsiteOutput],
+        delete_public_access_block => ["DeletePublicAccessBlock", DeletePublicAccessBlockInput, DeletePublicAccessBlockOutput],
+    );
 
-    async fn list_buckets(
-        &self,
-        req: S3Request<ListBucketsInput>,
-    ) -> S3Result<S3Response<ListBucketsOutput>> {
-        self.inner.list_buckets(req).await
-    }
+    // MARK: - Object HEAD
+    impl_s3_methods!(
+        head_object => ["HeadObject", HeadObjectInput, HeadObjectOutput],
+    );
 
-    async fn list_multipart_uploads(
-        &self,
-        req: S3Request<ListMultipartUploadsInput>,
-    ) -> S3Result<S3Response<ListMultipartUploadsOutput>> {
-        self.inner.list_multipart_uploads(req).await
-    }
+    // MARK: - Object GET
+    impl_s3_methods!(
+        get_object_acl => ["GetObjectAcl", GetObjectAclInput, GetObjectAclOutput],
+        get_object_attributes => ["GetObjectAttributes", GetObjectAttributesInput, GetObjectAttributesOutput],
+        get_object_legal_hold => ["GetObjectLegalHold", GetObjectLegalHoldInput, GetObjectLegalHoldOutput],
+        get_object_retention => ["GetObjectRetention", GetObjectRetentionInput, GetObjectRetentionOutput],
+        get_object_tagging => ["GetObjectTagging", GetObjectTaggingInput, GetObjectTaggingOutput],
+        get_object_torrent => ["GetObjectTorrent", GetObjectTorrentInput, GetObjectTorrentOutput],
+    );
 
-    async fn list_objects(
-        &self,
-        req: S3Request<ListObjectsInput>,
-    ) -> S3Result<S3Response<ListObjectsOutput>> {
-        self.inner.list_objects(req).await
-    }
+    // MARK: - Object PUT
+    impl_s3_methods!(
+        put_object_acl => ["PutObjectAcl", PutObjectAclInput, PutObjectAclOutput],
+        put_object_legal_hold => ["PutObjectLegalHold", PutObjectLegalHoldInput, PutObjectLegalHoldOutput],
+        put_object_retention => ["PutObjectRetention", PutObjectRetentionInput, PutObjectRetentionOutput],
+        put_object_tagging => ["PutObjectTagging", PutObjectTaggingInput, PutObjectTaggingOutput],
+    );
 
-    async fn list_objects_v2(
-        &self,
-        req: S3Request<ListObjectsV2Input>,
-    ) -> S3Result<S3Response<ListObjectsV2Output>> {
-        self.inner.list_objects_v2(req).await
-    }
+    // MARK: - Object DELETE
+    impl_s3_methods!(
+        delete_object_tagging => ["DeleteObjectTagging", DeleteObjectTaggingInput, DeleteObjectTaggingOutput],
+    );
 
-    async fn list_parts(
-        &self,
-        req: S3Request<ListPartsInput>,
-    ) -> S3Result<S3Response<ListPartsOutput>> {
-        self.inner.list_parts(req).await
-    }
+    // MARK: - Object Multipart
+    impl_s3_methods!(
+        abort_multipart_upload => ["AbortMultipartUpload", AbortMultipartUploadInput, AbortMultipartUploadOutput],
+        create_multipart_upload => ["CreateMultipartUpload", CreateMultipartUploadInput, CreateMultipartUploadOutput],
+        list_parts => ["ListParts", ListPartsInput, ListPartsOutput],
+        upload_part => ["UploadPart", UploadPartInput, UploadPartOutput],
+        upload_part_copy => ["UploadPartCopy", UploadPartCopyInput, UploadPartCopyOutput],
+    );
 
-    async fn upload_part(
-        &self,
-        req: S3Request<UploadPartInput>,
-    ) -> S3Result<S3Response<UploadPartOutput>> {
-        self.inner.upload_part(req).await
-    }
-
-    async fn upload_part_copy(
-        &self,
-        req: S3Request<UploadPartCopyInput>,
-    ) -> S3Result<S3Response<UploadPartCopyOutput>> {
-        self.inner.upload_part_copy(req).await
-    }
+    // MARK: - Object Other
+    impl_s3_methods!(
+        post_object => ["PostObject", PostObjectInput, PostObjectOutput],
+        restore_object => ["RestoreObject", RestoreObjectInput, RestoreObjectOutput],
+        select_object_content => ["SelectObjectContent", SelectObjectContentInput, SelectObjectContentOutput],
+        write_get_object_response => ["WriteGetObjectResponse", WriteGetObjectResponseInput, WriteGetObjectResponseOutput],
+    );
 }

@@ -34,6 +34,7 @@ pub use self::error::ApplicationError;
 pub use self::fifo_cache::FifoCache;
 pub use self::proxy::{S3CachingProxy, range_to_string};
 pub use self::s3_cache::{CacheKey, CachedObject, S3Cache};
+pub use self::s3_op::s3_operation_name;
 pub use self::statistics::UniqueRequestedObjectsStatisticsTracker;
 
 mod auth;
@@ -43,6 +44,7 @@ mod fifo_cache;
 mod metrics_writer;
 mod proxy;
 mod s3_cache;
+mod s3_op;
 mod service;
 mod statistics;
 mod telemetry;

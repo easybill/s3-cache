@@ -11,6 +11,13 @@ use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitEx
 
 use crate::{CARGO_CRATE_NAME, Config};
 
+static HOSTNAME: LazyLock<String> = LazyLock::new(|| {
+    std::env::vars()
+        .find(|(key, _)| key == "HOSTNAME")
+        .map(|(_, value)| value)
+        .unwrap_or_else(|| String::from("unknown"))
+});
+
 static RESOURCE: LazyLock<opentelemetry_sdk::Resource> = LazyLock::new(|| {
     opentelemetry_sdk::Resource::builder()
         .with_service_name("s3_cache")
@@ -507,7 +514,7 @@ static PROM_SERVICE_ERROR: LazyLock<prometheus::IntCounterVec> = LazyLock::new(|
             "service_error_total",
             "Internal errors the service can encounter",
         ),
-        &["error_type"],
+        &["error_type", "service", "component", "action", "host_name"],
     )
     .unwrap();
     PROMETHEUS_REGISTRY
@@ -516,9 +523,22 @@ static PROM_SERVICE_ERROR: LazyLock<prometheus::IntCounterVec> = LazyLock::new(|
     counter
 });
 
-pub(crate) fn record_service_error(error_type: &'static str) {
-    SERVICE_ERROR.add(1, &[KeyValue::new("error.type", error_type)]);
-    PROM_SERVICE_ERROR.with_label_values(&[error_type]).inc();
+pub(crate) fn record_service_error(
+    error_type: &'static str,
+    component: &'static str,
+    action: &'static str,
+) {
+    let attributes = &[
+        KeyValue::new("error.type", error_type),
+        KeyValue::new("service", CARGO_CRATE_NAME),
+        KeyValue::new("component", component),
+        KeyValue::new("action", action),
+        KeyValue::new("host.name", HOSTNAME.clone()),
+    ];
+    SERVICE_ERROR.add(1, attributes);
+    PROM_SERVICE_ERROR
+        .with_label_values(&[error_type, CARGO_CRATE_NAME, component, action, &HOSTNAME])
+        .inc();
 }
 
 // MARK: Size Count

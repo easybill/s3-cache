@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use s3s::dto::*;
-use s3s::{s3_error, S3Request, S3Response, S3Result, S3};
+use s3s::{S3, S3Request, S3Response, S3Result, s3_error};
 use s3s_aws::Proxy;
 use tracing::{debug, error, warn};
 

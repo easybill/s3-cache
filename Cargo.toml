@@ -72,7 +72,7 @@ tracing-subscriber = { version = "0.3", features = [
     "fmt",
     "env-filter",
 ] }
-reqwest = "0.12.28"
+reqwest = "0.13.2"
 
 [dev-dependencies]
 http = "1"

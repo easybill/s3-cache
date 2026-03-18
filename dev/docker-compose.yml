@@ -33,16 +33,35 @@ services:
       CACHE_MAX_SIZE_BYTES: "1073741824"
       CACHE_MAX_OBJECT_SIZE_BYTES: "10485760"
       CACHE_TTL_SECONDS: "86400"
-      PROMETHEUS_TEXTFILE_DIR: /metrics
+      OTEL_GRPC_ENDPOINT_URL: "http://otel-collector:4317"
       RUST_LOG: info
     depends_on:
       minio:
         condition: service_healthy
+      otel-collector:
+        condition: service_started
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8080/health" ]
       interval: 5s
       timeout: 3s
       retries: 10
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.147.0
+    volumes:
+      - ./otel-collector-config.yml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:8889:8889"
+
+  prometheus:
+    image: prom/prometheus:v3.10.0
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "127.0.0.1:9090:9090"
+    depends_on:
+      - otel-collector
 
   test-runner:
     image: amazon/aws-cli

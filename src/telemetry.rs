@@ -492,84 +492,33 @@ pub(crate) fn record_cache_invalidation() {
     CACHE_INVALIDATION_TOTAL.add(1, &[]);
 }
 
-// MARK: Cache Mismatch
+// MARK: Service Errors
 
-pub(crate) fn record_cache_mismatch() {
-    static CACHE_MISMATCH_ERROR_TOTAL: LazyLock<Counter<u64>> = LazyLock::new(|| {
-        opentelemetry::global::meter(CARGO_CRATE_NAME)
-            .u64_counter("s3_cache.mismatch_error_total")
-            .with_description("Number of cache mismatches detected in dry-run mode")
-            .build()
-    });
+static SERVICE_ERROR: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    opentelemetry::global::meter(CARGO_CRATE_NAME)
+        .u64_counter("service.error")
+        .with_description("Internal errors the service can encounter")
+        .build()
+});
 
-    static PROM_CACHE_MISMATCH_ERROR_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
-        let counter = IntCounter::new(
-            "s3_cache_mismatch_error_total",
-            "Number of cache mismatches detected in dry-run mode",
-        )
+static PROM_SERVICE_ERROR: LazyLock<prometheus::IntCounterVec> = LazyLock::new(|| {
+    let counter = prometheus::IntCounterVec::new(
+        prometheus::Opts::new(
+            "service_error_total",
+            "Internal errors the service can encounter",
+        ),
+        &["error_type"],
+    )
+    .unwrap();
+    PROMETHEUS_REGISTRY
+        .register(Box::new(counter.clone()))
         .unwrap();
-        PROMETHEUS_REGISTRY
-            .register(Box::new(counter.clone()))
-            .unwrap();
-        counter
-    });
+    counter
+});
 
-    PROM_CACHE_MISMATCH_ERROR_TOTAL.inc();
-    CACHE_MISMATCH_ERROR_TOTAL.add(1, &[]);
-}
-
-// MARK: Upstream Errors
-
-pub(crate) fn record_upstream_error() {
-    static UPSTREAM_ERROR: LazyLock<Counter<u64>> = LazyLock::new(|| {
-        opentelemetry::global::meter(CARGO_CRATE_NAME)
-            .u64_counter("s3_cache.upstream_error")
-            .with_description("Number of upstream S3 errors")
-            .build()
-    });
-
-    static PROM_UPSTREAM_ERROR: LazyLock<IntCounter> = LazyLock::new(|| {
-        let counter = IntCounter::new(
-            "s3_cache_upstream_error_total",
-            "Number of upstream S3 errors",
-        )
-        .unwrap();
-        PROMETHEUS_REGISTRY
-            .register(Box::new(counter.clone()))
-            .unwrap();
-        counter
-    });
-
-    PROM_UPSTREAM_ERROR.inc();
-    UPSTREAM_ERROR.add(1, &[]);
-}
-
-// MARK: Buffering Errors
-
-pub(crate) fn record_buffering_error() {
-    static BUFFERING_ERROR: LazyLock<Counter<u64>> = LazyLock::new(|| {
-        opentelemetry::global::meter(CARGO_CRATE_NAME)
-            .u64_counter("s3_cache.buffering_error")
-            .with_description(
-                "Number of buffering errors (object exceeded size limit during streaming)",
-            )
-            .build()
-    });
-
-    static PROM_BUFFERING_ERROR: LazyLock<IntCounter> = LazyLock::new(|| {
-        let counter = IntCounter::new(
-            "s3_cache_buffering_error_total",
-            "Number of buffering errors (object exceeded size limit during streaming)",
-        )
-        .unwrap();
-        PROMETHEUS_REGISTRY
-            .register(Box::new(counter.clone()))
-            .unwrap();
-        counter
-    });
-
-    PROM_BUFFERING_ERROR.inc();
-    BUFFERING_ERROR.add(1, &[]);
+pub(crate) fn record_service_error(error_type: &'static str) {
+    SERVICE_ERROR.add(1, &[KeyValue::new("error.type", error_type)]);
+    PROM_SERVICE_ERROR.with_label_values(&[error_type]).inc();
 }
 
 // MARK: Size Count

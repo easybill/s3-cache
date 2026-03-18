@@ -28,6 +28,8 @@ async fn start_test_server_with_upstream(
         cache_ttl_seconds: 60,
         worker_threads: 2,
         otel_grpc_endpoint_url: None,
+        otel_export_metrics: false,
+        otel_export_logs: false,
         prometheus_textfile_dir: None,
     };
 

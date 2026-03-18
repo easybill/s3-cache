@@ -84,12 +84,16 @@ const EVICTION_AGE_BUCKETS: &[f64] = &[
 pub(crate) fn initialize_telemetry(
     config: &Config,
 ) -> crate::Result<(
-    opentelemetry_sdk::metrics::SdkMeterProvider,
+    Option<opentelemetry_sdk::metrics::SdkMeterProvider>,
     Option<opentelemetry_sdk::logs::SdkLoggerProvider>,
 )> {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
-    let logs_provider = init_logs(config.otel_grpc_endpoint_url.as_deref())?;
+    let otel_logs_endpoint = config
+        .otel_grpc_endpoint_url
+        .as_deref()
+        .filter(|_| config.otel_export_logs);
+    let logs_provider = init_logs(otel_logs_endpoint)?;
 
     match logs_provider.as_ref() {
         None => {
@@ -109,7 +113,11 @@ pub(crate) fn initialize_telemetry(
         }
     }
 
-    let metrics_provider = init_metrics(config.otel_grpc_endpoint_url.as_deref())?;
+    let otel_metrics_endpoint = config
+        .otel_grpc_endpoint_url
+        .as_deref()
+        .filter(|_| config.otel_export_metrics);
+    let metrics_provider = init_metrics(otel_metrics_endpoint)?;
 
     Ok((metrics_provider, logs_provider))
 }
@@ -147,35 +155,37 @@ pub(crate) fn shutdown_logs(logs_provider: Option<opentelemetry_sdk::logs::SdkLo
 
 fn init_metrics(
     otel_grpc_endpoint_url: Option<&str>,
-) -> crate::Result<opentelemetry_sdk::metrics::SdkMeterProvider> {
-    let builder =
-        opentelemetry_sdk::metrics::SdkMeterProvider::builder().with_resource(RESOURCE.clone());
+) -> crate::Result<Option<opentelemetry_sdk::metrics::SdkMeterProvider>> {
+    let Some(otel_grpc_endpoint_url) = otel_grpc_endpoint_url else {
+        info!("OTLP metrics export disabled");
+        return Ok(None);
+    };
 
-    let provider = match otel_grpc_endpoint_url {
-        None => {
-            info!("opentelemetry_stdout initialized");
-            builder.with_periodic_exporter(opentelemetry_stdout::MetricExporter::default())
-        }
-        Some(otel_grpc_endpoint_url) => {
-            info!("opentelemetry_otlp initialized");
-            let otlp_exporter = opentelemetry_otlp::MetricExporter::builder()
-                .with_tonic()
-                .with_compression(Compression::Gzip)
-                .with_endpoint(otel_grpc_endpoint_url)
-                .with_timeout(Duration::from_secs(5))
-                .build()?;
+    info!("OTLP metrics export enabled (endpoint: {otel_grpc_endpoint_url})");
+    let otlp_exporter = opentelemetry_otlp::MetricExporter::builder()
+        .with_tonic()
+        .with_compression(Compression::Gzip)
+        .with_endpoint(otel_grpc_endpoint_url)
+        .with_timeout(Duration::from_secs(5))
+        .build()?;
 
-            builder.with_periodic_exporter(otlp_exporter)
-        }
-    }
-    .build();
+    let provider = opentelemetry_sdk::metrics::SdkMeterProvider::builder()
+        .with_resource(RESOURCE.clone())
+        .with_periodic_exporter(otlp_exporter)
+        .build();
 
     opentelemetry::global::set_meter_provider(provider.clone());
 
-    Ok(provider)
+    Ok(Some(provider))
 }
 
-pub(crate) fn shutdown_metrics(metric_provider: opentelemetry_sdk::metrics::SdkMeterProvider) {
+pub(crate) fn shutdown_metrics(
+    metric_provider: Option<opentelemetry_sdk::metrics::SdkMeterProvider>,
+) {
+    let Some(metric_provider) = metric_provider else {
+        return;
+    };
+
     if let Err(error) = metric_provider.shutdown() {
         error!("Error during metric shutdown: {error:?}");
     }

@@ -90,6 +90,8 @@ pub async fn start_proxy(minio_api_port: u16) -> TestProxy {
         cache_ttl_seconds: 86_400,
         worker_threads: 4,
         otel_grpc_endpoint_url: None, // no network side effects in tests
+        otel_export_logs: false,
+        otel_export_metrics: false,
         prometheus_textfile_dir: None, // no filesystem side effects in tests
     };
 

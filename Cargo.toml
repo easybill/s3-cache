@@ -49,10 +49,6 @@ opentelemetry_sdk = { version = "0.31", default-features = false, features = [
     "logs",
     "metrics",
 ] }
-opentelemetry-stdout = { version = "0.31", default-features = false, features = [
-    "logs",
-    "metrics",
-] }
 prometheus = "0.14"
 s3s = "0.13.0-alpha.3"
 s3s-aws = "0.13.0-alpha.3"

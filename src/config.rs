@@ -80,6 +80,14 @@ pub struct Config {
     #[arg(long, env = "OTEL_GRPC_ENDPOINT_URL")]
     pub otel_grpc_endpoint_url: Option<String>,
 
+    /// Export metrics via OTLP gRPC (requires otel_grpc_endpoint_url)
+    #[arg(long, env = "OTEL_EXPORT_METRICS", default_value_t = false, action = clap::ArgAction::Set)]
+    pub otel_export_metrics: bool,
+
+    /// Export logs via OTLP gRPC (requires otel_grpc_endpoint_url)
+    #[arg(long, env = "OTEL_EXPORT_LOGS", default_value_t = false, action = clap::ArgAction::Set)]
+    pub otel_export_logs: bool,
+
     /// Prometheus textfile collector directory
     #[arg(long, env = "PROMETHEUS_TEXTFILE_DIR")]
     pub prometheus_textfile_dir: Option<String>,
@@ -114,6 +122,14 @@ impl Config {
         if self.worker_threads == 0 {
             panic!("Invalid configuration: worker_threads must be greater than 0");
         }
+
+        if (self.otel_export_metrics || self.otel_export_logs)
+            && self.otel_grpc_endpoint_url.is_none()
+        {
+            panic!(
+                "Invalid configuration: otel_export_metrics and otel_export_logs require otel_grpc_endpoint_url to be set"
+            );
+        }
     }
 }
 
@@ -123,7 +139,8 @@ impl Display for Config {
             f,
             "Config{{ listen_addr: {}, upstream_endpoint: {}, upstream_region: {}, \
              cache_max_entries: {}, cache_max_size_bytes: {}, cache_ttl_seconds: {}, \
-             max_cacheable_object_size: {}, otel_grpc_endpoint_url: {:?}, cache_shards: {}, \
+             max_cacheable_object_size: {}, otel_grpc_endpoint_url: {:?}, \
+             otel_export_metrics: {}, otel_export_logs: {}, cache_shards: {}, \
              cache_dry_run: {}, worker_threads: {}, prometheus_textfile_dir: {:?} }}",
             self.listen_addr,
             self.upstream_endpoint,
@@ -133,6 +150,8 @@ impl Display for Config {
             self.cache_ttl_seconds,
             self.cache_max_object_size_bytes,
             self.otel_grpc_endpoint_url,
+            self.otel_export_metrics,
+            self.otel_export_logs,
             self.cache_shards,
             self.cache_dry_run,
             self.worker_threads,
@@ -165,6 +184,8 @@ mod tests {
             cache_ttl_seconds: 86_400,
             worker_threads: 4,
             otel_grpc_endpoint_url: None,
+            otel_export_metrics: false,
+            otel_export_logs: false,
             prometheus_textfile_dir: None,
         }
     }
@@ -208,6 +229,35 @@ mod tests {
     fn config_zero_worker_threads() {
         let mut config = minimal_config();
         config.worker_threads = 0;
+        config.validate();
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "otel_export_metrics and otel_export_logs require otel_grpc_endpoint_url"
+    )]
+    fn config_otel_export_metrics_without_endpoint() {
+        let mut config = minimal_config();
+        config.otel_export_metrics = true;
+        config.validate();
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "otel_export_metrics and otel_export_logs require otel_grpc_endpoint_url"
+    )]
+    fn config_otel_export_logs_without_endpoint() {
+        let mut config = minimal_config();
+        config.otel_export_logs = true;
+        config.validate();
+    }
+
+    #[test]
+    fn config_otel_export_with_endpoint() {
+        let mut config = minimal_config();
+        config.otel_grpc_endpoint_url = Some("http://localhost:4317".to_string());
+        config.otel_export_metrics = true;
+        config.otel_export_logs = true;
         config.validate();
     }
 }

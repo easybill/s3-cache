@@ -1,0 +1,59 @@
+services:
+  minio:
+    image: easybill/minio:RELEASE.2025-10-15T17-29-55Z
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/ready" ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  s3-cache:
+    build:
+      context: ..
+      dockerfile: dev/Dockerfile.s3-cache
+    ports:
+      - "8080:8080"
+    environment:
+      LISTEN_ADDR: "0.0.0.0:8080"
+      UPSTREAM_ENDPOINT: "http://minio:9000"
+      UPSTREAM_ACCESS_KEY_ID: minioadmin
+      UPSTREAM_SECRET_ACCESS_KEY: minioadmin
+      UPSTREAM_REGION: us-east-1
+      CLIENT_ACCESS_KEY_ID: testclient
+      CLIENT_SECRET_ACCESS_KEY: testsecret
+      CACHE_ENABLED: "true"
+      CACHE_MAX_ENTRIES: "10000"
+      CACHE_MAX_SIZE_BYTES: "1073741824"
+      CACHE_MAX_OBJECT_SIZE_BYTES: "10485760"
+      CACHE_TTL_SECONDS: "86400"
+      PROMETHEUS_TEXTFILE_DIR: /metrics
+      RUST_LOG: info
+    depends_on:
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8080/health" ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  test-runner:
+    image: amazon/aws-cli
+    entrypoint: [ "/bin/bash", "/scripts/test.sh" ]
+    volumes:
+      - ./test.sh:/scripts/test.sh:ro
+    environment:
+      AWS_ACCESS_KEY_ID: testclient
+      AWS_SECRET_ACCESS_KEY: testsecret
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_REQUEST_CHECKSUM_CALCULATION: WHEN_REQUIRED
+    depends_on:
+      s3-cache:
+        condition: service_healthy

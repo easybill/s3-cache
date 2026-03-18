@@ -220,7 +220,7 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
 
         let resp = result.map_err(|err| {
             error!(bucket = %bucket, key = %key, error = %err, "upstream error on get_object");
-            telemetry::record_service_error("upstream", "s3", "get_object");
+            telemetry::record_upstream_error("request_failed", "s3_proxy", "get_object");
             err
         })?;
         let output = resp.output;
@@ -292,7 +292,7 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
                             fresh_len = bytes.len(),
                             "cache mismatch: cached object differs from upstream"
                         );
-                        telemetry::record_service_error("cache-mismatch", "cache", "validation");
+                        telemetry::record_service_error("cache-mismatch", "s3_cache", "validation");
                     } else {
                         debug!(bucket = %bucket, key = %key, "dry-run: cached object matches upstream");
                     }
@@ -351,7 +351,7 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
                     key = %key,
                     "object exceeded size limit during buffering, stream consumed"
                 );
-                telemetry::record_service_error("buffering", "cache", "buffering");
+                telemetry::record_service_error("buffer_overflow", "s3_cache", "store_object");
                 telemetry::record_cache_oversized(body_len as u64);
                 Err(s3_error!(
                     InternalError,
@@ -372,7 +372,7 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
 
         let resp = result.map_err(|err| {
             error!(bucket = %bucket, key = %key, error = %err, "upstream error on put_object");
-            telemetry::record_service_error("upstream", "s3", "put_object");
+            telemetry::record_upstream_error("request_failed", "s3_proxy", "put_object");
             err
         })?;
 
@@ -402,7 +402,7 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
 
         let resp = result.map_err(|err| {
             error!(bucket = %bucket, key = %key, error = %err, "upstream error on delete_object");
-            telemetry::record_service_error("upstream", "s3", "delete_object");
+            telemetry::record_upstream_error("request_failed", "s3_proxy", "delete_object");
             err
         })?;
 
@@ -438,7 +438,7 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
 
         let resp = result.map_err(|err| {
             error!(bucket = %bucket, error = %err, "upstream error on delete_objects");
-            telemetry::record_service_error("upstream", "s3", "delete_objects");
+            telemetry::record_upstream_error("request_failed", "s3_proxy", "delete_objects");
             err
         })?;
 
@@ -470,7 +470,7 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
 
         let resp = result.map_err(|err| {
             error!(bucket = %dest_bucket, key = %dest_key, error = %err, "upstream error on copy_object");
-            telemetry::record_service_error("upstream", "s3", "copy_object");
+            telemetry::record_upstream_error("request_failed", "s3_proxy", "copy_object");
             err
         })?;
 
@@ -505,7 +505,7 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
 
         let resp = result.map_err(|err| {
             error!(bucket = %bucket, key = %key, error = %err, "upstream error on complete_multipart_upload");
-            telemetry::record_service_error("upstream", "s3", "complete_multipart_upload");
+            telemetry::record_upstream_error("request_failed", "s3_proxy", "complete_multipart_upload");
             err
         })?;
 

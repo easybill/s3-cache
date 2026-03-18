@@ -541,6 +541,48 @@ pub(crate) fn record_service_error(
         .inc();
 }
 
+// MARK: Upstream Errors
+
+static UPSTREAM_ERROR: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    opentelemetry::global::meter(CARGO_CRATE_NAME)
+        .u64_counter("upstream.error")
+        .with_description("Errors received from the upstream service")
+        .build()
+});
+
+static PROM_UPSTREAM_ERROR: LazyLock<prometheus::IntCounterVec> = LazyLock::new(|| {
+    let counter = prometheus::IntCounterVec::new(
+        prometheus::Opts::new(
+            "upstream_error_total",
+            "Errors received from the upstream service",
+        ),
+        &["error_type", "service", "component", "action", "host_name"],
+    )
+    .unwrap();
+    PROMETHEUS_REGISTRY
+        .register(Box::new(counter.clone()))
+        .unwrap();
+    counter
+});
+
+pub(crate) fn record_upstream_error(
+    error_type: &'static str,
+    component: &'static str,
+    action: &'static str,
+) {
+    let attributes = &[
+        KeyValue::new("error.type", error_type),
+        KeyValue::new("service", CARGO_CRATE_NAME),
+        KeyValue::new("component", component),
+        KeyValue::new("action", action),
+        KeyValue::new("host.name", HOSTNAME.clone()),
+    ];
+    UPSTREAM_ERROR.add(1, attributes);
+    PROM_UPSTREAM_ERROR
+        .with_label_values(&[error_type, CARGO_CRATE_NAME, component, action, &HOSTNAME])
+        .inc();
+}
+
 // MARK: Size Count
 
 pub(crate) fn record_cache_size_count(size_count: usize) {

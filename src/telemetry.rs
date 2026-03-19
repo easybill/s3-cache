@@ -108,7 +108,43 @@ pub(crate) fn initialize_telemetry(
         .filter(|_| config.otel_export_metrics);
     let metrics_provider = init_metrics(otel_metrics_endpoint)?;
 
+    register_service_info();
+
     Ok((metrics_provider, logs_provider))
+}
+
+// MARK: Service Info
+
+fn register_service_info() {
+    static PROM_SERVICE_INFO: LazyLock<prometheus::IntGaugeVec> = LazyLock::new(|| {
+        let gauge = prometheus::IntGaugeVec::new(
+            prometheus::Opts::new("s3_cache_info", "Service build and runtime information"),
+            &["version", "host_name"],
+        )
+        .unwrap();
+        PROMETHEUS_REGISTRY
+            .register(Box::new(gauge.clone()))
+            .unwrap();
+        gauge
+    });
+
+    static OTEL_SERVICE_INFO: LazyLock<Gauge<u64>> = LazyLock::new(|| {
+        opentelemetry::global::meter(CARGO_CRATE_NAME)
+            .u64_gauge("s3_cache.info")
+            .with_description("Service build and runtime information")
+            .build()
+    });
+
+    PROM_SERVICE_INFO
+        .with_label_values(&[env!("CARGO_PKG_VERSION"), &HOSTNAME])
+        .set(1);
+    OTEL_SERVICE_INFO.record(
+        1,
+        &[
+            KeyValue::new("version", env!("CARGO_PKG_VERSION")),
+            KeyValue::new("host.name", HOSTNAME.clone()),
+        ],
+    );
 }
 
 fn init_logs(

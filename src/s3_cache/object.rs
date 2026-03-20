@@ -12,25 +12,13 @@ use s3s::dto::{
     ContentType, ETag, GetObjectOutput, LastModified, Metadata, StreamingBlob,
 };
 
-/// Body content of a cached S3 object.
-///
-/// In normal mode, stores the actual bytes. In dry-run mode, stores only a hash
-/// for validation purposes.
-#[derive(Clone, Eq, PartialEq)]
-pub enum CachedObjectBody {
-    /// The actual object body bytes.
-    Bytes { bytes: Bytes },
-    /// A hash of the body (dry-run mode only).
-    Hash { hash: u64 },
-}
-
 /// A cached S3 object with its body and metadata.
 ///
 /// Stores all S3 object metadata needed to reconstruct a `GetObjectOutput` response,
 /// plus timing information for TTL enforcement.
 #[derive(Clone, Eq, PartialEq)]
 pub struct CachedObject {
-    body: CachedObjectBody,
+    body: Bytes,
     content_type: Option<ContentType>,
     e_tag: Option<ETag>,
     last_modified: Option<LastModified>,
@@ -51,7 +39,7 @@ impl CachedObject {
     /// The `inserted_at` timestamp is set to the current time.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        body: CachedObjectBody,
+        body: Bytes,
         content_type: Option<ContentType>,
         e_tag: Option<ETag>,
         last_modified: Option<LastModified>,
@@ -91,8 +79,8 @@ impl CachedObject {
         self.inserted_at.elapsed() > ttl
     }
 
-    /// Returns a reference to the cached body.
-    pub fn body(&self) -> &CachedObjectBody {
+    /// Returns a reference to the cached body bytes.
+    pub fn body(&self) -> &Bytes {
         &self.body
     }
 
@@ -117,45 +105,23 @@ impl CachedObject {
     }
 
     /// Converts this cached object to a `GetObjectOutput` for S3 responses.
-    ///
-    /// Returns `None` if the body is a hash (dry-run mode) rather than actual bytes.
-    pub fn to_s3_object(&self) -> Option<GetObjectOutput> {
-        let Self {
-            body,
-            content_type,
-            e_tag,
-            last_modified,
-            content_length,
-            accept_ranges,
-            cache_control,
-            content_disposition,
-            content_encoding,
-            content_language,
-            content_range,
-            metadata,
-            inserted_at: _,
-        } = self;
+    pub fn to_s3_object(&self) -> GetObjectOutput {
+        let body = StreamingBlob::from(s3s::Body::from(self.body.clone()));
 
-        let CachedObjectBody::Bytes { bytes } = body else {
-            return None;
-        };
-
-        let body = StreamingBlob::from(s3s::Body::from(bytes.clone()));
-
-        Some(GetObjectOutput {
+        GetObjectOutput {
             body: Some(body),
-            content_length: Some(*content_length as i64),
-            content_type: content_type.clone(),
-            e_tag: e_tag.clone(),
-            last_modified: last_modified.clone(),
-            accept_ranges: accept_ranges.clone(),
-            cache_control: cache_control.clone(),
-            content_disposition: content_disposition.clone(),
-            content_encoding: content_encoding.clone(),
-            content_language: content_language.clone(),
-            content_range: content_range.clone(),
-            metadata: metadata.clone(),
+            content_length: Some(self.content_length as i64),
+            content_type: self.content_type.clone(),
+            e_tag: self.e_tag.clone(),
+            last_modified: self.last_modified.clone(),
+            accept_ranges: self.accept_ranges.clone(),
+            cache_control: self.cache_control.clone(),
+            content_disposition: self.content_disposition.clone(),
+            content_encoding: self.content_encoding.clone(),
+            content_language: self.content_language.clone(),
+            content_range: self.content_range.clone(),
+            metadata: self.metadata.clone(),
             ..Default::default()
-        })
+        }
     }
 }

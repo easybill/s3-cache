@@ -44,10 +44,6 @@ pub struct Config {
     #[arg(long, env = "CACHE_ENABLED", default_value_t = true, action = clap::ArgAction::Set)]
     pub cache_enabled: bool,
 
-    /// Dry-run mode: serve from cache but do not write new entries
-    #[arg(long, env = "CACHE_DRY_RUN", default_value_t = false, action = clap::ArgAction::Set)]
-    pub cache_dry_run: bool,
-
     /// Number of cache shards
     #[arg(long, env = "CACHE_SHARDS", default_value_t = 16)]
     pub cache_shards: usize,
@@ -137,7 +133,7 @@ impl Display for Config {
              cache_max_entries: {}, cache_max_size_bytes: {}, cache_ttl_seconds: {}, \
              max_cacheable_object_size: {}, otel_grpc_endpoint_url: {:?}, \
              otel_export_metrics: {}, otel_export_logs: {}, cache_shards: {}, \
-             cache_dry_run: {}, worker_threads: {} }}",
+             worker_threads: {} }}",
             self.listen_addr,
             self.upstream_endpoint,
             self.upstream_region,
@@ -149,7 +145,6 @@ impl Display for Config {
             self.otel_export_metrics,
             self.otel_export_logs,
             self.cache_shards,
-            self.cache_dry_run,
             self.worker_threads,
         )
     }
@@ -171,7 +166,6 @@ mod tests {
             client_access_key_id: "testclient".to_string(),
             client_secret_access_key: "testclient".to_string(),
             cache_enabled: true,
-            cache_dry_run: false,
             cache_shards: 16,
             cache_max_entries: 10_000,
             cache_max_size_bytes: 1_073_741_824,

@@ -11,8 +11,7 @@
 //! - **Async/Sharded**: Lock-free sharded cache for high concurrency workloads
 //! - **Range Request Support**: Caches partial object reads (byte ranges)
 //! - **Cache Invalidation**: Automatic invalidation on PUT/DELETE operations
-//! - **Dry-run Mode**: Validate cache correctness without serving cached data
-//! - **Telemetry**: OpenTelemetry metrics support
+//! - **Telemetry**: OpenTelemetry metrics
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -138,12 +137,8 @@ where
     });
 
     // Build caching proxy
-    let caching_proxy = S3CachingProxy::from_aws_proxy(
-        proxy,
-        cache,
-        config.cache_max_object_size_bytes,
-        config.cache_dry_run,
-    );
+    let caching_proxy =
+        S3CachingProxy::from_aws_proxy(proxy, cache, config.cache_max_object_size_bytes);
 
     // Build S3 service with auth, wrapped in a health check layer
     let service = {

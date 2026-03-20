@@ -83,7 +83,6 @@ pub async fn start_proxy(minio_api_port: u16) -> TestProxy {
         client_access_key_id: CLIENT_KEY_ID.to_string(),
         client_secret_access_key: CLIENT_SECRET.to_string(),
         cache_enabled: true,
-        cache_dry_run: false,
         cache_shards: 16,
         // Small limits for test speed; 1 MB max object size enables the large-object test
         cache_max_entries: 100,

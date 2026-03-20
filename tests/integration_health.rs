@@ -20,7 +20,6 @@ async fn start_test_server_with_upstream(
         client_access_key_id: "testclient".to_string(),
         client_secret_access_key: "testsecret".to_string(),
         cache_enabled: false,
-        cache_dry_run: false,
         cache_shards: 4,
         cache_max_entries: 100,
         cache_max_size_bytes: 1024 * 1024,

@@ -87,10 +87,6 @@ pub struct Config {
     /// Export logs via OTLP gRPC (requires otel_grpc_endpoint_url)
     #[arg(long, env = "OTEL_EXPORT_LOGS", default_value_t = false, action = clap::ArgAction::Set)]
     pub otel_export_logs: bool,
-
-    /// Prometheus textfile collector directory
-    #[arg(long, env = "PROMETHEUS_TEXTFILE_DIR")]
-    pub prometheus_textfile_dir: Option<String>,
 }
 
 impl Config {
@@ -141,7 +137,7 @@ impl Display for Config {
              cache_max_entries: {}, cache_max_size_bytes: {}, cache_ttl_seconds: {}, \
              max_cacheable_object_size: {}, otel_grpc_endpoint_url: {:?}, \
              otel_export_metrics: {}, otel_export_logs: {}, cache_shards: {}, \
-             cache_dry_run: {}, worker_threads: {}, prometheus_textfile_dir: {:?} }}",
+             cache_dry_run: {}, worker_threads: {} }}",
             self.listen_addr,
             self.upstream_endpoint,
             self.upstream_region,
@@ -155,7 +151,6 @@ impl Display for Config {
             self.cache_shards,
             self.cache_dry_run,
             self.worker_threads,
-            self.prometheus_textfile_dir,
         )
     }
 }
@@ -186,7 +181,6 @@ mod tests {
             otel_grpc_endpoint_url: None,
             otel_export_metrics: false,
             otel_export_logs: false,
-            prometheus_textfile_dir: None,
         }
     }
 

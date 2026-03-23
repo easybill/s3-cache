@@ -62,9 +62,10 @@ where
         let body_size = result
             .as_ref()
             .ok()
-            .and_then(|res| res.body().bytes())
-            .map(|bytes| bytes.len())
-            .unwrap_or(0) as u64;
+            .and_then(|res| res.headers().get(hyper::header::CONTENT_LENGTH))
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(0);
 
         let response_body_size = ResponseBodySize {
             version: "1.1",

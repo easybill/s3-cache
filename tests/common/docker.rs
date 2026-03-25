@@ -92,7 +92,6 @@ pub async fn start_proxy(minio_api_port: u16) -> TestProxy {
         otel_grpc_endpoint_url: None, // no network side effects in tests
         otel_export_logs: false,
         otel_export_metrics: false,
-        prometheus_textfile_dir: None, // no filesystem side effects in tests
     };
 
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();

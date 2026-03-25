@@ -12,7 +12,7 @@
 //! - **Range Request Support**: Caches partial object reads (byte ranges)
 //! - **Cache Invalidation**: Automatic invalidation on PUT/DELETE operations
 //! - **Dry-run Mode**: Validate cache correctness without serving cached data
-//! - **Telemetry**: OpenTelemetry metrics and Prometheus support
+//! - **Telemetry**: OpenTelemetry metrics support
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -41,7 +41,6 @@ mod auth;
 mod config;
 mod error;
 mod fifo_cache;
-mod metrics_writer;
 mod proxy;
 mod s3_cache;
 mod s3_op;
@@ -157,24 +156,6 @@ where
         S3CachingServiceProxy::new(b.build(), upstream_health_endpoint)
     };
 
-    // Start Prometheus metrics writer if configured
-    let metrics_writer_handle = if let Some(textfile_dir) = config.prometheus_textfile_dir.clone() {
-        info!(
-            "Starting Prometheus textfile writer to {}/s3_cache.prom",
-            textfile_dir
-        );
-        Some(tokio::spawn({
-            async move {
-                if let Err(e) = metrics_writer::start_metrics_writer(textfile_dir).await {
-                    error!("Metrics writer failed: {:?}", e);
-                }
-            }
-        }))
-    } else {
-        info!("Prometheus textfile writer disabled (PROMETHEUS_TEXTFILE_DIR not set)");
-        None
-    };
-
     // Start hyper server
     let listener = TcpListener::bind(config.listen_addr).await?;
     // Report the bound address before entering the accept loop so callers using
@@ -221,12 +202,6 @@ where
         () = tokio::time::sleep(Duration::from_secs(10)) => {
             info!("Graceful shutdown timed out after 10s, aborting");
         }
-    }
-
-    // Abort metrics writer background task
-    if let Some(handle) = metrics_writer_handle {
-        handle.abort();
-        info!("Metrics writer task aborted");
     }
 
     telemetry::shutdown_metrics(metrics_provider);

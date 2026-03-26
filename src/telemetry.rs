@@ -95,7 +95,7 @@ pub(crate) fn initialize_telemetry(
             let otel_layer = OpenTelemetryTracingBridge::new(logs_provider);
             tracing_subscriber::registry()
                 .with(filter)
-                .with(tracing_subscriber::fmt::layer())
+                .with(tracing_subscriber::fmt::layer().with_ansi(false))
                 .with(otel_layer)
                 .try_init()
                 .ok();

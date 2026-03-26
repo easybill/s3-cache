@@ -108,7 +108,28 @@ pub(crate) fn initialize_telemetry(
         .filter(|_| config.otel_export_metrics);
     let metrics_provider = init_metrics(otel_metrics_endpoint)?;
 
+    register_service_info();
+
     Ok((metrics_provider, logs_provider))
+}
+
+// MARK: Service Info
+
+fn register_service_info() {
+    static OTEL_SERVICE_INFO: LazyLock<Gauge<u64>> = LazyLock::new(|| {
+        opentelemetry::global::meter(CARGO_CRATE_NAME)
+            .u64_gauge("s3_cache.info")
+            .with_description("Service build and runtime information")
+            .build()
+    });
+
+    OTEL_SERVICE_INFO.record(
+        1,
+        &[
+            KeyValue::new("version", env!("CARGO_PKG_VERSION")),
+            KeyValue::new("host.name", HOSTNAME.clone()),
+        ],
+    );
 }
 
 fn init_logs(

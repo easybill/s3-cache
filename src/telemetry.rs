@@ -1,13 +1,13 @@
 use std::{sync::LazyLock, time::Duration};
 
-use opentelemetry::metrics::{Counter, Gauge, Histogram};
 use opentelemetry::KeyValue;
+use opentelemetry::metrics::{Counter, Gauge, Histogram};
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
 use opentelemetry_otlp::{Compression, WithExportConfig, WithTonicConfig};
 use tracing::{error, info};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
-use crate::{Config, CARGO_CRATE_NAME};
+use crate::{CARGO_CRATE_NAME, Config};
 
 static HOSTNAME: LazyLock<String> = LazyLock::new(|| {
     std::env::vars()

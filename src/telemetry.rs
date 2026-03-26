@@ -1,13 +1,13 @@
 use std::{sync::LazyLock, time::Duration};
 
-use opentelemetry::KeyValue;
 use opentelemetry::metrics::{Counter, Gauge, Histogram};
+use opentelemetry::KeyValue;
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
 use opentelemetry_otlp::{Compression, WithExportConfig, WithTonicConfig};
 use tracing::{error, info};
-use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
-use crate::{CARGO_CRATE_NAME, Config};
+use crate::{Config, CARGO_CRATE_NAME};
 
 static HOSTNAME: LazyLock<String> = LazyLock::new(|| {
     std::env::vars()
@@ -116,18 +116,6 @@ pub(crate) fn initialize_telemetry(
 // MARK: Service Info
 
 fn register_service_info() {
-    static PROM_SERVICE_INFO: LazyLock<prometheus::IntGaugeVec> = LazyLock::new(|| {
-        let gauge = prometheus::IntGaugeVec::new(
-            prometheus::Opts::new("s3_cache_info", "Service build and runtime information"),
-            &["version", "host_name"],
-        )
-        .unwrap();
-        PROMETHEUS_REGISTRY
-            .register(Box::new(gauge.clone()))
-            .unwrap();
-        gauge
-    });
-
     static OTEL_SERVICE_INFO: LazyLock<Gauge<u64>> = LazyLock::new(|| {
         opentelemetry::global::meter(CARGO_CRATE_NAME)
             .u64_gauge("s3_cache.info")
@@ -135,9 +123,6 @@ fn register_service_info() {
             .build()
     });
 
-    PROM_SERVICE_INFO
-        .with_label_values(&[env!("CARGO_PKG_VERSION"), &HOSTNAME])
-        .set(1);
     OTEL_SERVICE_INFO.record(
         1,
         &[

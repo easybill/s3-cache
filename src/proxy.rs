@@ -29,11 +29,7 @@ impl<T> S3CachingProxy<T> {
     /// Creates a new caching proxy wrapping an S3 implementation.
     ///
     /// Pass `None` for `cache` to disable caching (passthrough mode).
-    pub fn new(
-        inner: T,
-        cache: Option<Arc<S3Cache>>,
-        max_cacheable_size: usize,
-    ) -> Self {
+    pub fn new(inner: T, cache: Option<Arc<S3Cache>>, max_cacheable_size: usize) -> Self {
         let statistics = UniqueRequestedObjectsStatisticsTracker::new();
 
         Self {
@@ -167,19 +163,19 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
         let cache_key = CacheKey::new(bucket.clone(), key.clone(), range_str.clone(), version_id);
 
         // Check cache
-        if let Some(cache) = &self.cache {
-            if let Some(cached) = cache.get(&cache_key).await {
-                debug!(bucket = %bucket, key = %key, "cache hit");
-                telemetry::record_cache_hit(cached.content_length() as u64);
-                cache.report_stats().await;
+        if let Some(cache) = &self.cache
+            && let Some(cached) = cache.get(&cache_key).await
+        {
+            debug!(bucket = %bucket, key = %key, "cache hit");
+            telemetry::record_cache_hit(cached.content_length() as u64);
+            cache.report_stats().await;
 
-                let bytes_len = cached.content_length();
-                if self.statistics.insert(&key, bytes_len) {
-                    telemetry::record_unique_requested(bytes_len as u64);
-                }
-
-                return Ok(S3Response::new(cached.to_s3_object()));
+            let bytes_len = cached.content_length();
+            if self.statistics.insert(&key, bytes_len) {
+                telemetry::record_unique_requested(bytes_len as u64);
             }
+
+            return Ok(S3Response::new(cached.to_s3_object()));
         }
         debug!(bucket = %bucket, key = %key, "cache miss");
 

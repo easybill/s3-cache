@@ -3087,6 +3087,7 @@ dependencies = [
  "hyper 1.8.1",
  "hyper-util",
  "hyperloglockless",
+ "libc",
  "mock_instant",
  "opentelemetry",
  "opentelemetry-appender-tracing",

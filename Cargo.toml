@@ -77,6 +77,7 @@ reqwest = "0.13.2"
 http = "1"
 http-body-util = "0.1"
 hyper = { version = "1", features = ["client"] }
+libc = "0.2"
 mock_instant = "0.6"
 testcontainers = "0.27"
 testcontainers-modules = { version = "0.15", features = ["minio"] }
@@ -85,3 +86,4 @@ testcontainers-modules = { version = "0.15", features = ["minio"] }
 mock-clock = ["dep:mock_instant"]
 sim = ["dep:rand", "dep:rand_distr", "dep:http"]
 docker-tests = []
+system_tests = []

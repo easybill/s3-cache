@@ -1,4 +1,3 @@
-use std::hash::{BuildHasher, RandomState};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Instant;
@@ -8,7 +7,7 @@ use s3s::{S3, S3Request, S3Response, S3Result, s3_error};
 use s3s_aws::Proxy;
 use tracing::{debug, error, warn};
 
-use crate::s3_cache::{CacheKey, CachedObject, CachedObjectBody, S3Cache};
+use crate::s3_cache::{CacheKey, CachedObject, S3Cache};
 use crate::statistics::UniqueRequestedObjectsStatisticsTracker;
 use crate::telemetry::{self, RequestDuration};
 
@@ -24,35 +23,20 @@ pub struct S3CachingProxy<T = Proxy> {
     cache: Option<Arc<S3Cache>>,
     max_cacheable_size: usize,
     statistics: UniqueRequestedObjectsStatisticsTracker,
-    hash_builder: RandomState,
-    /// Dry-run mode: the cache is populated and checked, but get_object always
-    /// returns the fresh upstream response. On cache hit the cached body is
-    /// compared against the fresh body and a `cache.mismatch` event is emitted
-    /// when they differ.
-    dry_run: bool,
 }
 
 impl<T> S3CachingProxy<T> {
     /// Creates a new caching proxy wrapping an S3 implementation.
     ///
     /// Pass `None` for `cache` to disable caching (passthrough mode).
-    /// Set `dry_run` to `true` to validate cache correctness without serving cached data.
-    pub fn new(
-        inner: T,
-        cache: Option<Arc<S3Cache>>,
-        max_cacheable_size: usize,
-        dry_run: bool,
-    ) -> Self {
+    pub fn new(inner: T, cache: Option<Arc<S3Cache>>, max_cacheable_size: usize) -> Self {
         let statistics = UniqueRequestedObjectsStatisticsTracker::new();
-        let hash_builder = RandomState::new();
 
         Self {
             inner,
             cache,
             max_cacheable_size,
             statistics,
-            hash_builder,
-            dry_run,
         }
     }
 
@@ -79,9 +63,8 @@ impl S3CachingProxy<Proxy> {
         inner: Proxy,
         cache: Option<Arc<S3Cache>>,
         max_cacheable_size: usize,
-        dry_run: bool,
     ) -> Self {
-        Self::new(inner, cache, max_cacheable_size, dry_run)
+        Self::new(inner, cache, max_cacheable_size)
     }
 }
 
@@ -180,35 +163,21 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
         let cache_key = CacheKey::new(bucket.clone(), key.clone(), range_str.clone(), version_id);
 
         // Check cache
-        let cached_hit = if let Some(cache) = &self.cache {
-            if let Some(cached) = cache.get(&cache_key).await {
-                debug!(bucket = %bucket, key = %key, "cache hit");
-                telemetry::record_cache_hit(cached.content_length() as u64);
-                cache.report_stats().await;
+        if let Some(cache) = &self.cache
+            && let Some(cached) = cache.get(&cache_key).await
+        {
+            debug!(bucket = %bucket, key = %key, "cache hit");
+            telemetry::record_cache_hit(cached.content_length() as u64);
+            cache.report_stats().await;
 
-                if !self.dry_run {
-                    let bytes_len = cached.content_length();
-
-                    if self.statistics.insert(&key, bytes_len) {
-                        telemetry::record_unique_requested(bytes_len as u64);
-                    }
-
-                    let Some(output) = cached.to_s3_object() else {
-                        panic!("expected bytes, found hash");
-                    };
-
-                    return Ok(S3Response::new(output));
-                }
-
-                Some(cached)
-            } else {
-                debug!(bucket = %bucket, key = %key, "cache miss");
-                None
+            let bytes_len = cached.content_length();
+            if self.statistics.insert(&key, bytes_len) {
+                telemetry::record_unique_requested(bytes_len as u64);
             }
-        } else {
-            debug!(bucket = %bucket, key = %key, "cache miss");
-            None
-        };
+
+            return Ok(S3Response::new(cached.to_s3_object()));
+        }
+        debug!(bucket = %bucket, key = %key, "cache miss");
 
         // Forward to upstream — reconstruct request since we moved range out
         let req = req.map_input(|mut input| {
@@ -261,45 +230,10 @@ impl<T: S3 + Send + Sync> S3 for S3CachingProxy<T> {
         match body.store_all_limited(max_cacheable_size).await {
             Ok(bytes) => {
                 let content_length = bytes.len();
-                if cached_hit.is_none() {
-                    telemetry::record_cache_miss(content_length as u64);
-                }
-
-                let body = if self.dry_run {
-                    let hash = self.hash_builder.hash_one(&bytes);
-                    CachedObjectBody::Hash { hash }
-                } else {
-                    CachedObjectBody::Bytes {
-                        bytes: bytes.clone(),
-                    }
-                };
-
-                // In dry-run mode, compare the fresh body against the cached one
-                if self.dry_run
-                    && let Some(cached_hit) = &cached_hit
-                {
-                    if cached_hit.content_type() != output.content_type.as_ref()
-                        || cached_hit.e_tag() != output.e_tag.as_ref()
-                        || cached_hit.last_modified() != output.last_modified.as_ref()
-                        || cached_hit.body() != &body
-                    {
-                        error!(
-                            bucket = %cache_key.bucket(),
-                            key = %cache_key.key(),
-                            range = ?cache_key.range(),
-                            version_id = ?cache_key.version_id(),
-                            cached_len = cached_hit.content_length(),
-                            fresh_len = bytes.len(),
-                            "cache mismatch: cached object differs from upstream"
-                        );
-                        telemetry::record_service_error("cache-mismatch", "s3_cache", "validation");
-                    } else {
-                        debug!(bucket = %bucket, key = %key, "dry-run: cached object matches upstream");
-                    }
-                }
+                telemetry::record_cache_miss(content_length as u64);
 
                 let cached = CachedObject::new(
-                    body,
+                    bytes.clone(),
                     output.content_type.clone(),
                     output.e_tag.clone(),
                     output.last_modified.clone(),

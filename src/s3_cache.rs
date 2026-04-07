@@ -9,7 +9,7 @@ use crate::FifoCache;
 use crate::telemetry;
 
 pub use self::key::CacheKey;
-pub use self::object::{CachedObject, CachedObjectBody};
+pub use self::object::CachedObject;
 
 mod key;
 mod object;

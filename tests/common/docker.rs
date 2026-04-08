@@ -95,6 +95,10 @@ pub async fn start_proxy(minio_api_port: u16) -> TestProxy {
         otel_export_metrics: false,
     };
 
+    start_proxy_with_config(config).await
+}
+
+pub async fn start_proxy_with_config(config: s3_cache::Config) -> TestProxy {
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
     let (addr_tx, addr_rx) = tokio::sync::oneshot::channel::<SocketAddr>();
 

@@ -38,7 +38,7 @@ opentelemetry = { version = "0.31", default-features = false, features = [
     "logs",
     "metrics",
 ] }
-opentelemetry-appender-tracing = "0.31"
+opentelemetry-appender-tracing = "0.32"
 opentelemetry-otlp = { version = "0.31", features = [
     "grpc-tonic",
     "gzip-tonic",

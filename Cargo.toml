@@ -71,7 +71,7 @@ tracing-subscriber = { version = "0.3", features = [
     "fmt",
     "env-filter",
 ] }
-reqwest = "0.13.3"
+reqwest = "0.13.4"
 
 [dev-dependencies]
 http = "1"

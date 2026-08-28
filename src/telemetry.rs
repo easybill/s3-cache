@@ -108,14 +108,14 @@ pub(crate) fn initialize_telemetry(
         .filter(|_| config.otel_export_metrics);
     let metrics_provider = init_metrics(otel_metrics_endpoint)?;
 
-    register_service_info();
+    register_service_info(config);
 
     Ok((metrics_provider, logs_provider))
 }
 
 // MARK: Service Info
 
-fn register_service_info() {
+fn register_service_info(config: &Config) {
     static OTEL_SERVICE_INFO: LazyLock<Gauge<u64>> = LazyLock::new(|| {
         opentelemetry::global::meter(CARGO_CRATE_NAME)
             .u64_gauge("s3_cache.info")
@@ -128,8 +128,48 @@ fn register_service_info() {
         &[
             KeyValue::new("version", env!("CARGO_PKG_VERSION")),
             KeyValue::new("host.name", HOSTNAME.clone()),
+            KeyValue::new("cache_enabled", config.cache_enabled.to_string()),
+            KeyValue::new("upstream_region", config.upstream_region.clone()),
         ],
     );
+
+    let meter = opentelemetry::global::meter(CARGO_CRATE_NAME);
+
+    let cache_shards = meter
+        .u64_gauge("s3_cache.config.cache_shards")
+        .with_description("Configured number of cache shards")
+        .build();
+    cache_shards.record(config.cache_shards as u64, &[]);
+
+    let cache_max_entries = meter
+        .u64_gauge("s3_cache.config.cache_max_entries")
+        .with_description("Configured maximum number of cache entries")
+        .build();
+    cache_max_entries.record(config.cache_max_entries as u64, &[]);
+
+    let cache_max_size_bytes = meter
+        .u64_gauge("s3_cache.config.cache_max_size_bytes")
+        .with_description("Configured maximum cache size in bytes")
+        .build();
+    cache_max_size_bytes.record(config.cache_max_size_bytes as u64, &[]);
+
+    let cache_max_object_size_bytes = meter
+        .u64_gauge("s3_cache.config.cache_max_object_size_bytes")
+        .with_description("Configured maximum cacheable object size in bytes")
+        .build();
+    cache_max_object_size_bytes.record(config.cache_max_object_size_bytes as u64, &[]);
+
+    let cache_ttl_seconds = meter
+        .u64_gauge("s3_cache.config.cache_ttl_seconds")
+        .with_description("Configured cache TTL in seconds")
+        .build();
+    cache_ttl_seconds.record(config.cache_ttl_seconds as u64, &[]);
+
+    let worker_threads = meter
+        .u64_gauge("s3_cache.config.worker_threads")
+        .with_description("Configured number of worker threads")
+        .build();
+    worker_threads.record(config.worker_threads as u64, &[]);
 }
 
 fn init_logs(
